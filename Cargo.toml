@@ -2,18 +2,18 @@
 name = "edged"
 version = "0.1.0"
 edition = "2021"
-authors = ["Edged Contributors"]
+authors = ["TXG0Fk3 <txg0fk3@proton.me>"]
 description = "High-quality PowerToys Screen Ruler replica natively built for Wayland (Hyprland, GNOME, Sway)"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/txg0fk3/Edged"
-homepage = "https://github.com/txg0fk3/Edged"
+license = "MIT"
+repository = "https://github.com/TXG0Fk3/Edged"
+homepage = "https://github.com/TXG0Fk3/Edged"
 readme = "README.md"
 keywords = ["wayland", "screen-ruler", "hyprland", "egui", "powertoys"]
 categories = ["command-line-utilities", "development-tools", "graphics"]
 
 [package.metadata.deb]
-maintainer = "Edged Contributors <https://github.com/txg0fk3/Edged>"
-copyright = "2026 Edged Contributors"
+maintainer = "TXG0Fk3 <txg0fk3@proton.me>"
+copyright = "2026 TXG0Fk3"
 license-file = ["LICENSE", "4"]
 depends = "$auto"
 recommends = "grim, wl-clipboard"
@@ -26,6 +26,7 @@ assets = [
     ["assets/edged.svg", "usr/share/icons/hicolor/scalable/apps/edged.svg", "644"],
     ["config.example.toml", "usr/share/doc/edged/config.example.toml", "644"],
     ["README.md", "usr/share/doc/edged/README.md", "644"],
+    ["LICENSE", "usr/share/doc/edged/LICENSE", "644"],
 ]
 
 [package.metadata.generate-rpm]
@@ -36,6 +37,7 @@ assets = [
     { source = "assets/edged.svg", dest = "/usr/share/icons/hicolor/scalable/apps/edged.svg", mode = "644" },
     { source = "config.example.toml", dest = "/usr/share/doc/edged/config.example.toml", mode = "644" },
     { source = "README.md", dest = "/usr/share/doc/edged/README.md", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/doc/edged/LICENSE", mode = "644" },
 ]
 
 [dependencies]

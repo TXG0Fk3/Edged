@@ -126,26 +126,28 @@ jobs:
                    "${ARCH_DIR}/usr/share/applications" \
                    "${ARCH_DIR}/usr/share/icons/hicolor/256x256/apps" \
                    "${ARCH_DIR}/usr/share/icons/hicolor/scalable/apps" \
-                   "${ARCH_DIR}/usr/share/doc/edged"
+                   "${ARCH_DIR}/usr/share/doc/edged" \
+                   "${ARCH_DIR}/usr/share/licenses/edged"
           cp target/release/edged "${ARCH_DIR}/usr/bin/"
           cp edged.desktop "${ARCH_DIR}/usr/share/applications/"
           cp assets/edged.png "${ARCH_DIR}/usr/share/icons/hicolor/256x256/apps/edged.png"
           cp assets/edged.svg "${ARCH_DIR}/usr/share/icons/hicolor/scalable/apps/edged.svg"
           cp config.example.toml "${ARCH_DIR}/usr/share/doc/edged/"
           cp README.md "${ARCH_DIR}/usr/share/doc/edged/"
+          cp LICENSE "${ARCH_DIR}/usr/share/doc/edged/"
+          cp LICENSE "${ARCH_DIR}/usr/share/licenses/edged/"
 
           cat << 'EOF' > "${ARCH_DIR}/.PKGINFO"
           pkgname = edged
           pkgbase = edged
           pkgver = ${{ env.CLEAN_VERSION }}-1
           pkgdesc = High-quality PowerToys Screen Ruler replica for Wayland
-          url = https://github.com/txg0fk3/Edged
+          url = https://github.com/TXG0Fk3/Edged
           builddate = $(date +%s)
-          packager = Edged CI <https://github.com/txg0fk3/Edged>
+          packager = TXG0Fk3 <https://github.com/TXG0Fk3/Edged>
           size = $(du -sb "${ARCH_DIR}" | awk '{print $1}')
           arch = x86_64
           license = MIT
-          license = Apache-2.0
           depend = glibc
           optdepend = grim: Wayland screencopy screenshot utility
           optdepend = hyprshot: Hyprland screenshot utility

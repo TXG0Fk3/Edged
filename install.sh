@@ -42,6 +42,10 @@ if [ -f "config.example.toml" ]; then
     install -m 644 config.example.toml "${DOC_DIR}/config.example.toml"
 fi
 
+if [ -f "LICENSE" ]; then
+    install -m 644 LICENSE "${DOC_DIR}/LICENSE"
+fi
+
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${APP_DIR}" 2>/dev/null || true
 fi

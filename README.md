@@ -3,10 +3,11 @@
 > A blazing-fast, pixel-accurate **PowerToys Screen Ruler** replica designed natively for **Wayland** (Hyprland, Sway, River, GNOME Shell, KDE Plasma, Niri).
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg?logo=rust)](https://www.rust-lang.org/)
+[![Release](https://github.com/TXG0Fk3/Edged/actions/workflows/release.yml/badge.svg)](https://github.com/TXG0Fk3/Edged/actions/workflows/release.yml)
 [![GUI Engine](https://img.shields.io/badge/GUI-egui%200.37-blue.svg)](https://github.com/emilk/egui)
 [![Wayland](https://img.shields.io/badge/display-Wayland-00599C.svg?logo=wayland)](https://wayland.freedesktop.org/)
 [![Pure Rust](https://img.shields.io/badge/dependencies-pure%20rust%20(zero%20GTK)-success.svg)](#architecture--design-principles)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Edged** brings the intuitive, edge-aware measurement capabilities of Windows PowerToys Screen Ruler to modern Linux Wayland desktops. Whether you are fine-tuning UI component spacing, inspecting web layouts, auditing margins and padding, or dragging rectangular bounds across visual elements, Edged provides real-time measurement lines, dynamic contrast sensitivity, and instant clipboard export—with **zero persistent background daemons**, **zero GTK runtime dependencies**, and **zero screen flicker**.
 
@@ -135,7 +136,7 @@ Measures vertical distance exclusively. A single vertical line expands upwards a
 
 ## 📦 Installation & Prebuilt Packages
 
-Every push to the repository automatically triggers automated builds creating packages for all major Linux distributions on the [**GitHub Releases**](https://github.com/txg0fk3/Edged/releases) page.
+Every push to the repository automatically triggers automated builds creating packages for all major Linux distributions on the [**GitHub Releases**](https://github.com/TXG0Fk3/Edged/releases) page.
 
 ### 1. Prebuilt Packages (Recommended)
 
@@ -164,7 +165,7 @@ Ensure you have Rust 1.80 or later installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/txg0fk3/Edged.git
+git clone https://github.com/TXG0Fk3/Edged.git
 cd Edged
 
 # Build optimized release binary
@@ -622,10 +623,9 @@ Test coverage includes:
 
 ## 📄 License
 
-Edged is open-source software distributed under either of the following licenses at your option:
+Edged is open-source software licensed under the **MIT License**.
 
-- **MIT License** ([LICENSE-MIT](LICENSE) or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
-- **Apache License, Version 2.0** ([LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0))
+Copyright © 2026 **TXG0Fk3**. See the [LICENSE](LICENSE) file for the full text.
 
 ---
 
