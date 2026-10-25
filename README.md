@@ -26,7 +26,11 @@
 - 📌 **Shift to Pin**: Hold <kbd>Shift</kbd> in Bounds mode to pin previously drawn rectangles to the screen and measure multiple areas simultaneously.
 - 📏 **Draw Feet**: Perpendicular tick marks at measurement line ends for clear boundary visibility.
 - 📋 **Click to Copy**: Primary click copies the measurement directly to your Wayland clipboard (`wl-clipboard` / GTK) in configurable formats (`compact`, `verbose`, or `css`).
-- 🖥️ **Native Wayland & Multi-Monitor**: Uses `wlr-layer-shell` on wlroots compositors (Hyprland, Sway, River) and seamless overlay fallback on GNOME Mutter. Full support for fractional scaling and multi-monitor setups.
+- 🖥️ **Native Wayland & Multi-Monitor**: Uses `wlr-layer-shell` on wlroots compositors (Hyprland, Sway, River) and seamless overlay fallback on GNOME Mutter.
+- 🎯 **Intelligent Multi-Monitor Targeting**:
+  - **Focused Monitor by Default**: Automatically detects and measures on the monitor in focus (where your cursor or active window is).
+  - **Auto-Cropping & Alignment**: If screenshot tools capture the entire multi-monitor desktop, Edged automatically crops the capture to your focused monitor's bounds, eliminating misaligned coordinates or black areas.
+  - **Configurable**: Choose between `focused` (default), `all` (span all displays), `primary`, or any specific connector name (`DP-1`, `HDMI-A-1`, etc.).
 - 📸 **Freeze-frame Rendering (No Black Screen)**: Captures the screen before presenting the overlay, drawing the frozen desktop snapshot underneath the ruler with zero flicker.
 - 🛠️ **Configurable Screenshot Tools**: Supports `grim`, `xdg-desktop-portal` (PipeWire), or any custom command (e.g. `wayshot`, `hyprshot`, `spectacle`).
 - ⚙️ **Fully Configurable**: Generates a documented `~/.config/edged/config.toml` file automatically on first run.
@@ -49,6 +53,10 @@ edged --vertical      # Vertical line measuring distance between color edges
 
 ```bash
 edged --tolerance 25                # Override initial edge detection tolerance (1 to 100%)
+edged --monitor focused             # Measure on focused monitor (default)
+edged --monitor all                 # Span overlay across all connected monitors
+edged --monitor primary             # Measure on primary monitor
+edged --monitor DP-1                # Measure on specific connector name
 edged --config /path/to/config.toml # Use custom configuration file
 edged --help                        # Show help information
 edged --version                     # Print version
@@ -126,6 +134,19 @@ default_mode = "spacing"
 # Whether to close the application immediately after copying a measurement
 close_on_copy = true
 
+[monitor]
+# Multi-monitor target mode: "focused", "all", "primary", or specific connector name ("DP-1", "HDMI-A-1", "eDP-1")
+# - "focused": (Default & Recommended) Always targets the currently active / focused monitor where your cursor or active window is.
+#              Avoids multi-monitor glitches, scaling differences, and black/misaligned surfaces.
+# - "all": Spans the ruler overlay across all connected monitors.
+# - "primary": Targets the primary display.
+# - "<name>": Targets a specific monitor by connector name (e.g. "DP-1", "HDMI-A-1", "Virtual-1").
+target = "focused"
+
+# When target is a single monitor ("focused", "primary", or "<name>"), automatically crop multi-monitor screenshots
+# so that the ruler overlay matches the target monitor 1:1 without displaying pieces of other monitors.
+crop_to_monitor = true
+
 [capture]
 # Screen capture method: "auto", "grim", "portal", "custom"
 # - "auto": Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
@@ -135,14 +156,22 @@ close_on_copy = true
 method = "auto"
 
 # Custom shell command when method = "custom"
-# Available path placeholders:
+# Available path and monitor placeholders:
 #   %s or %path     Full temporary output file path (e.g. /tmp/edged_custom_1234.png)
 #   %d or %dir      Temporary directory (e.g. /tmp)
 #   %n or %filename Temporary output filename without directory (e.g. edged_custom_1234.png)
+#   %o or %output   Target monitor connector name (e.g. DP-1, Virtual-1)
+#   %w or %width    Target monitor width in pixels
+#   %h or %height   Target monitor height in pixels
+#   %x              Target monitor x offset
+#   %y              Target monitor y offset
 #
 # Verified Examples:
 #   # Grim (standard Wayland / wlroots tool, takes output file directly):
 #   command = "grim %s"
+#
+#   # Grim targeting specific monitor connector:
+#   command = "grim -o %o %s"
 #
 #   # Hyprshot (Recommended: use --raw to write directly to stdout and redirect to %s):
 #   command = "hyprshot -m output -s --raw > %s"
@@ -320,7 +349,9 @@ cargo test
 The test suite covers:
 - Mode cycling logic (`next` / `prev`)
 - Keyboard shortcut matching (Tab, Shift+Tab, single chars, named keys)
-- Command placeholder expansion (`%s`, `%path`, `%d`, `%dir`, `%n`, `%filename`)
+- Monitor target parsing (`focused`, `all`, `primary`, connector names)
+- Multi-monitor screenshot auto-cropping to target monitor bounds
+- Command placeholder expansion (`%s`, `%path`, `%d`, `%dir`, `%n`, `%filename`, `%o`, `%w`, `%h`, `%x`, `%y`)
 - Directory fallback and newest image detection
 - Synthetic box and edge boundary detection
 - Gradient tolerance thresholds

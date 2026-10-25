@@ -2,6 +2,7 @@ mod capture;
 mod cli;
 mod clipboard;
 mod config;
+mod monitor;
 mod ruler;
 mod ui;
 
@@ -16,13 +17,27 @@ fn main() {
     let cli = Cli::parse();
 
     // Load or initialize configuration (~/.config/edged/config.toml)
-    let config = match Config::load_or_create(cli.config.as_deref()) {
+    let mut config = match Config::load_or_create(cli.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("[edged] Error loading configuration: {}", err);
             std::process::exit(1);
         }
     };
+
+    // CLI --monitor flag overrides configuration
+    if let Some(ref mon) = cli.monitor {
+        config.monitor.target = mon.parse().unwrap();
+    }
+
+    // Initialize GTK4 and Wayland display
+    if let Err(err) = gtk4::init() {
+        eprintln!("[edged] Warning: Failed to initialize GTK4 runtime: {}", err);
+    }
+
+    let display = gdk4::Display::default().expect("Wayland display not found");
+    let all_monitors = monitor::get_all_monitors(&display);
+    let target_monitor = monitor::resolve_target_monitor(&config.monitor.target, &all_monitors).cloned();
 
     // Determine operating mode (CLI flags take priority, fallback to config.toml)
     let mode = if cli.bounds {
@@ -48,7 +63,7 @@ fn main() {
         .clamp(1, 100);
 
     // Capture screen before creating any overlay window
-    let screen_image = match capture::capture_screen(&config) {
+    let raw_image = match capture::capture_screen(&config, target_monitor.as_ref()) {
         Ok(img) => img,
         Err(err) => {
             eprintln!("[edged] Failed to capture screen: {}", err);
@@ -58,6 +73,20 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    // If targeting a single monitor, crop multi-monitor screenshots to target geometry
+    let (screen_image, is_monitor_cropped) = if let Some(ref target) = target_monitor {
+        if config.monitor.crop_to_monitor {
+            let cropped = monitor::crop_image_if_needed(raw_image, target, &all_monitors, true);
+            (cropped, true)
+        } else {
+            (raw_image, false)
+        }
+    } else {
+        (raw_image, false)
+    };
+
+    let target_monitor_name = target_monitor.map(|m| m.name);
 
     // Convert captured frame to Cairo surface for rendering background
     let cairo_surface = match capture::rgba_to_cairo_surface(&screen_image) {
@@ -88,6 +117,8 @@ fn main() {
             surface_clone.clone(),
             mode,
             initial_tolerance,
+            target_monitor_name.clone(),
+            is_monitor_cropped,
         );
     });
 

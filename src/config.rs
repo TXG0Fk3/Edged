@@ -1,3 +1,4 @@
+use crate::monitor::MonitorTarget;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -221,10 +222,33 @@ impl Default for ClipboardConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitorConfig {
+    #[serde(default)]
+    pub target: MonitorTarget,
+    #[serde(default = "default_crop_to_monitor")]
+    pub crop_to_monitor: bool,
+}
+
+fn default_crop_to_monitor() -> bool {
+    true
+}
+
+impl Default for MonitorConfig {
+    fn default() -> Self {
+        Self {
+            target: MonitorTarget::Focused,
+            crop_to_monitor: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
+    #[serde(default)]
+    pub monitor: MonitorConfig,
     #[serde(default)]
     pub capture: CaptureConfig,
     #[serde(default)]
@@ -253,6 +277,19 @@ default_mode = "spacing"
 # Whether to close the application immediately after copying a measurement
 close_on_copy = true
 
+[monitor]
+# Multi-monitor target mode: "focused", "all", "primary", or specific connector name ("DP-1", "HDMI-A-1", "eDP-1")
+# - "focused": (Default & Recommended) Always targets the currently active / focused monitor where your cursor or active window is.
+#              Avoids multi-monitor glitches, scaling differences, and black/misaligned surfaces.
+# - "all": Spans the ruler overlay across all connected monitors.
+# - "primary": Targets the primary display.
+# - "<name>": Targets a specific monitor by connector name (e.g. "DP-1", "HDMI-A-1", "Virtual-1").
+target = "focused"
+
+# When target is a single monitor ("focused", "primary", or "<name>"), automatically crop multi-monitor screenshots
+# so that the ruler overlay matches the target monitor 1:1 without displaying pieces of other monitors.
+crop_to_monitor = true
+
 [capture]
 # Screen capture method: "auto", "grim", "portal", "custom"
 # - "auto": Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
@@ -262,14 +299,22 @@ close_on_copy = true
 method = "auto"
 
 # Custom shell command when method = "custom"
-# Available path placeholders:
+# Available path and monitor placeholders:
 #   %s or %path     Full temporary output file path (e.g. /tmp/edged_custom_1234.png)
 #   %d or %dir      Temporary directory (e.g. /tmp)
 #   %n or %filename Temporary output filename without directory (e.g. edged_custom_1234.png)
+#   %o or %output   Target monitor connector name (e.g. DP-1, Virtual-1)
+#   %w or %width    Target monitor width in pixels
+#   %h or %height   Target monitor height in pixels
+#   %x              Target monitor x offset
+#   %y              Target monitor y offset
 #
 # Verified Examples:
 #   # Grim (standard Wayland / wlroots tool, takes output file directly):
 #   command = "grim %s"
+#
+#   # Grim targeting specific monitor connector:
+#   command = "grim -o %o %s"
 #
 #   # Hyprshot (Recommended: use --raw to write directly to stdout and redirect to %s):
 #   command = "hyprshot -m output -s --raw > %s"

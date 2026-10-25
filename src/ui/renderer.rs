@@ -68,7 +68,7 @@ impl<'a> Renderer<'a> {
         let cy = (measurement.cursor_y as f64) / scale_factor - monitor_y;
         let left_x = (measurement.left_x as f64) / scale_factor - monitor_x;
         let right_x = (measurement.right_x as f64) / scale_factor - monitor_x;
-        let top_y = (measurement.top_y as f64) / scale_factor - monitor_x;
+        let top_y = (measurement.top_y as f64) / scale_factor - monitor_y;
         let bottom_y = (measurement.bottom_y as f64) / scale_factor - monitor_y;
 
         let feet_size = self.config.ruler.feet_size;

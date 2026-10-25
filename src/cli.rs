@@ -32,6 +32,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub tolerance: Option<u8>,
 
+    /// Target monitor: 'focused' (default), 'all', 'primary', or connector name (e.g. 'DP-1')
+    #[arg(short, long)]
+    pub monitor: Option<String>,
+
     /// Path to a custom configuration file
     #[arg(short, long)]
     pub config: Option<PathBuf>,

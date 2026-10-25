@@ -1,4 +1,5 @@
 use edged::config::{parse_color, Config, CopyFormat, DEFAULT_CONFIG_COMMENTED};
+use edged::monitor::{crop_image_if_needed, MonitorInfo, MonitorTarget};
 use edged::ruler::bounds::Rect;
 use edged::ruler::{EdgeDetector, RulerMode};
 use edged::ui::matches_key;
@@ -19,6 +20,8 @@ fn test_default_config_validity() {
     assert_eq!(cfg.shortcuts.mode_spacing_key, "2");
     assert!(cfg.shortcuts.shift_scroll_cycles_mode);
     assert!(cfg.shortcuts.ctrl_scroll_cycles_mode);
+    assert_eq!(cfg.monitor.target, MonitorTarget::Focused);
+    assert!(cfg.monitor.crop_to_monitor);
 }
 
 #[test]
@@ -182,30 +185,107 @@ fn test_expand_command_placeholders() {
     let target = Path::new("/tmp/test_dir/capture_123.png");
 
     // Standard %s
-    let cmd1 = expand_command_placeholders("grim %s", target);
+    let cmd1 = expand_command_placeholders("grim %s", target, None);
     assert_eq!(cmd1, "grim /tmp/test_dir/capture_123.png");
 
     // %path alias
-    let cmd2 = expand_command_placeholders("wayshot %path", target);
+    let cmd2 = expand_command_placeholders("wayshot %path", target, None);
     assert_eq!(cmd2, "wayshot /tmp/test_dir/capture_123.png");
 
     // Directory (%d) and filename (%n) for tools like hyprshot
-    let cmd3 = expand_command_placeholders("hyprshot -m output -s -o %d -f %n", target);
+    let cmd3 = expand_command_placeholders("hyprshot -m output -s -o %d -f %n", target, None);
     assert_eq!(
         cmd3,
         "hyprshot -m output -s -o /tmp/test_dir -f capture_123.png"
     );
 
     // Named %dir and %filename aliases
-    let cmd4 = expand_command_placeholders("custom --dir %dir --file %filename", target);
+    let cmd4 = expand_command_placeholders("custom --dir %dir --file %filename", target, None);
     assert_eq!(
         cmd4,
         "custom --dir /tmp/test_dir --file capture_123.png"
     );
 
     // Fallback when no placeholders are present (appends target path)
-    let cmd5 = expand_command_placeholders("grim", target);
+    let cmd5 = expand_command_placeholders("grim", target, None);
     assert_eq!(cmd5, "grim /tmp/test_dir/capture_123.png");
+
+    // Monitor placeholders: %o, %w, %h, %x, %y
+    let monitor = MonitorInfo {
+        name: "DP-1".to_string(),
+        x: 1920,
+        y: 0,
+        width: 2560,
+        height: 1440,
+        scale: 1.0,
+        is_primary: false,
+        is_focused: true,
+    };
+
+    let cmd6 = expand_command_placeholders("grim -o %o %s", target, Some(&monitor));
+    assert_eq!(cmd6, "grim -o DP-1 /tmp/test_dir/capture_123.png");
+
+    let cmd7 = expand_command_placeholders("grim -g \"%x,%y %wx%h\" %s", target, Some(&monitor));
+    assert_eq!(cmd7, "grim -g \"1920,0 2560x1440\" /tmp/test_dir/capture_123.png");
+}
+
+#[test]
+fn test_monitor_target_parsing() {
+    assert_eq!("focused".parse::<MonitorTarget>().unwrap(), MonitorTarget::Focused);
+    assert_eq!("focus".parse::<MonitorTarget>().unwrap(), MonitorTarget::Focused);
+    assert_eq!("all".parse::<MonitorTarget>().unwrap(), MonitorTarget::All);
+    assert_eq!("primary".parse::<MonitorTarget>().unwrap(), MonitorTarget::Primary);
+    assert_eq!("DP-1".parse::<MonitorTarget>().unwrap(), MonitorTarget::Named("DP-1".to_string()));
+    assert_eq!("HDMI-A-1".parse::<MonitorTarget>().unwrap(), MonitorTarget::Named("HDMI-A-1".to_string()));
+}
+
+#[test]
+fn test_monitor_image_crop() {
+    // Simulate 2 monitors:
+    // Mon 1: 1920x1080 at (0, 0), black background (0, 0, 0)
+    // Mon 2: 1920x1080 at (1920, 0), red background (255, 0, 0)
+    // Total desktop image: 3840x1080
+    let mut desktop = RgbaImage::new(3840, 1080);
+    for y in 0..1080 {
+        for x in 0..1920 {
+            desktop.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+        }
+        for x in 1920..3840 {
+            desktop.put_pixel(x, y, Rgba([255, 0, 0, 255]));
+        }
+    }
+
+    let mon1 = MonitorInfo {
+        name: "eDP-1".to_string(),
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        scale: 1.0,
+        is_primary: true,
+        is_focused: false,
+    };
+
+    let mon2 = MonitorInfo {
+        name: "DP-1".to_string(),
+        x: 1920,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        scale: 1.0,
+        is_primary: false,
+        is_focused: true,
+    };
+
+    let all_monitors = vec![mon1.clone(), mon2.clone()];
+
+    // Crop to focused monitor (mon2, which is all red)
+    let cropped = crop_image_if_needed(desktop, &mon2, &all_monitors, true);
+    assert_eq!(cropped.width(), 1920);
+    assert_eq!(cropped.height(), 1080);
+    // Verify pixels are all red from monitor 2
+    assert_eq!(cropped.get_pixel(0, 0), &Rgba([255, 0, 0, 255]));
+    assert_eq!(cropped.get_pixel(1919, 1079), &Rgba([255, 0, 0, 255]));
 }
 
 #[test]

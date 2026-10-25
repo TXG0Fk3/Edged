@@ -2,6 +2,7 @@ pub mod renderer;
 
 use crate::clipboard::{copy_to_clipboard, format_measurement};
 use crate::config::Config;
+use crate::monitor::MonitorTarget;
 use crate::ruler::bounds::Rect;
 use crate::ruler::{EdgeDetector, EdgeMeasurement, RulerMode};
 use crate::ui::renderer::Renderer;
@@ -35,6 +36,8 @@ pub fn create_and_show_overlay(
     surface: Arc<ImageSurface>,
     mode: RulerMode,
     initial_tolerance: u8,
+    target_monitor_name: Option<String>,
+    is_monitor_cropped: bool,
 ) {
     let display = gdk::Display::default().expect("Wayland display not found");
 
@@ -64,32 +67,72 @@ pub fn create_and_show_overlay(
     let monitors = display.monitors();
     let monitor_count = monitors.n_items();
 
-    if monitor_count == 0 {
+    if config.monitor.target == MonitorTarget::All {
+        if monitor_count == 0 {
+            build_overlay_window(
+                app,
+                None,
+                config.clone(),
+                detector.clone(),
+                surface.clone(),
+                state.clone(),
+                layer_shell_supported,
+                false,
+            );
+        } else {
+            for i in 0..monitor_count {
+                if let Some(item) = monitors.item(i) {
+                    if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
+                        build_overlay_window(
+                            app,
+                            Some(monitor),
+                            config.clone(),
+                            detector.clone(),
+                            surface.clone(),
+                            state.clone(),
+                            layer_shell_supported,
+                            false,
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        // Target single monitor (focused, primary, or named connector)
+        let mut target_gdk_monitor: Option<gdk::Monitor> = None;
+
+        if let Some(ref target_name) = target_monitor_name {
+            for i in 0..monitor_count {
+                if let Some(item) = monitors.item(i) {
+                    if let Ok(m) = item.downcast::<gdk::Monitor>() {
+                        if let Some(conn) = m.connector() {
+                            if conn.eq_ignore_ascii_case(target_name) {
+                                target_gdk_monitor = Some(m);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fall back to first monitor if specific connector was not found
+        if target_gdk_monitor.is_none() && monitor_count > 0 {
+            if let Some(item) = monitors.item(0) {
+                target_gdk_monitor = item.downcast::<gdk::Monitor>().ok();
+            }
+        }
+
         build_overlay_window(
             app,
-            None,
+            target_gdk_monitor,
             config.clone(),
             detector.clone(),
             surface.clone(),
             state.clone(),
             layer_shell_supported,
+            is_monitor_cropped,
         );
-    } else {
-        for i in 0..monitor_count {
-            if let Some(item) = monitors.item(i) {
-                if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
-                    build_overlay_window(
-                        app,
-                        Some(monitor),
-                        config.clone(),
-                        detector.clone(),
-                        surface.clone(),
-                        state.clone(),
-                        layer_shell_supported,
-                    );
-                }
-            }
-        }
     }
 }
 
@@ -101,6 +144,7 @@ fn build_overlay_window(
     surface: Arc<ImageSurface>,
     state: Rc<RefCell<AppState>>,
     layer_shell_supported: bool,
+    is_monitor_cropped: bool,
 ) {
     let window = gtk4::ApplicationWindow::new(app);
     window.set_decorated(false);
@@ -136,7 +180,9 @@ fn build_overlay_window(
     drawing_area.set_vexpand(true);
 
     // Monitor geometry for global desktop coordinate mapping
-    let (monitor_x, monitor_y) = if let Some(ref m) = monitor {
+    let (monitor_x, monitor_y) = if is_monitor_cropped {
+        (0.0, 0.0)
+    } else if let Some(ref m) = monitor {
         let geom = m.geometry();
         (geom.x() as f64, geom.y() as f64)
     } else {

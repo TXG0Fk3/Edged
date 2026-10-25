@@ -1,4 +1,5 @@
 use crate::config::{CaptureMethod, Config};
+use crate::monitor::MonitorInfo;
 use ashpd::desktop::screenshot::Screenshot;
 use image::RgbaImage;
 use std::fs;
@@ -37,7 +38,10 @@ impl From<std::io::Error> for CaptureError {
 }
 
 /// Executes screen capture according to the configured capture method
-pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
+pub fn capture_screen(
+    config: &Config,
+    target_monitor: Option<&MonitorInfo>,
+) -> Result<RgbaImage, CaptureError> {
     // Determine configured method (priority to [capture] section, fallback to [general])
     let method = if config.capture.method != CaptureMethod::Auto {
         config.capture.method
@@ -52,7 +56,7 @@ pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
     };
 
     match method {
-        CaptureMethod::Grim => capture_via_grim(),
+        CaptureMethod::Grim => capture_via_grim(target_monitor),
         CaptureMethod::Portal => capture_via_portal(),
         CaptureMethod::Command | CaptureMethod::Custom => {
             if custom_cmd.is_empty() {
@@ -60,17 +64,17 @@ pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
                     "Custom capture command is empty. Configure 'command' in [capture] section.".to_string(),
                 ))
             } else {
-                capture_via_custom_command(custom_cmd)
+                capture_via_custom_command(custom_cmd, target_monitor)
             }
         }
         CaptureMethod::Auto => {
             // If custom command is set, prioritize it
             if !custom_cmd.is_empty() {
-                return capture_via_custom_command(custom_cmd);
+                return capture_via_custom_command(custom_cmd, target_monitor);
             }
 
             // Try 'grim' first (instant on wlroots/Hyprland/Sway)
-            match capture_via_grim() {
+            match capture_via_grim(target_monitor) {
                 Ok(img) => Ok(img),
                 Err(grim_err) => {
                     // Fall back to xdg-desktop-portal (GNOME, KDE Plasma, etc.)
@@ -89,8 +93,26 @@ pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
 }
 
 /// Captures the screen using the `grim` utility (Wayland screencopy)
-pub fn capture_via_grim() -> Result<RgbaImage, CaptureError> {
+pub fn capture_via_grim(target_monitor: Option<&MonitorInfo>) -> Result<RgbaImage, CaptureError> {
     let temp_path = std::env::temp_dir().join(format!("edged_grim_{}.png", std::process::id()));
+
+    // If a target monitor is specified, try targeting its output connector directly first
+    if let Some(monitor) = target_monitor {
+        let mut cmd = Command::new("grim");
+        cmd.arg("-t").arg("png");
+        cmd.arg("-o").arg(&monitor.name);
+        cmd.arg(&temp_path);
+
+        if let Ok(out) = cmd.output() {
+            if out.status.success() && temp_path.exists() {
+                if let Ok(img) = image::open(&temp_path) {
+                    let _ = fs::remove_file(&temp_path);
+                    return Ok(img.to_rgba8());
+                }
+            }
+        }
+        let _ = fs::remove_file(&temp_path);
+    }
 
     let output = Command::new("grim")
         .arg("-t")
@@ -160,7 +182,11 @@ pub fn capture_via_portal() -> Result<RgbaImage, CaptureError> {
 }
 
 /// Expands placeholders in a custom capture command template
-pub fn expand_command_placeholders(cmd_template: &str, temp_path: &Path) -> String {
+pub fn expand_command_placeholders(
+    cmd_template: &str,
+    temp_path: &Path,
+    monitor: Option<&MonitorInfo>,
+) -> String {
     let temp_str = temp_path.to_string_lossy();
     let temp_dir = temp_path
         .parent()
@@ -171,6 +197,12 @@ pub fn expand_command_placeholders(cmd_template: &str, temp_path: &Path) -> Stri
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "edged_capture.png".to_string());
 
+    let monitor_name = monitor.map(|m| m.name.as_str()).unwrap_or("");
+    let monitor_w = monitor.map(|m| m.width.to_string()).unwrap_or_default();
+    let monitor_h = monitor.map(|m| m.height.to_string()).unwrap_or_default();
+    let monitor_x = monitor.map(|m| m.x.to_string()).unwrap_or_default();
+    let monitor_y = monitor.map(|m| m.y.to_string()).unwrap_or_default();
+
     let mut cmd = cmd_template.to_string();
 
     let has_any_placeholder = cmd.contains("%s")
@@ -178,7 +210,15 @@ pub fn expand_command_placeholders(cmd_template: &str, temp_path: &Path) -> Stri
         || cmd.contains("%d")
         || cmd.contains("%dir")
         || cmd.contains("%n")
-        || cmd.contains("%filename");
+        || cmd.contains("%filename")
+        || cmd.contains("%o")
+        || cmd.contains("%output")
+        || cmd.contains("%w")
+        || cmd.contains("%width")
+        || cmd.contains("%h")
+        || cmd.contains("%height")
+        || cmd.contains("%x")
+        || cmd.contains("%y");
 
     if has_any_placeholder {
         cmd = cmd
@@ -187,7 +227,15 @@ pub fn expand_command_placeholders(cmd_template: &str, temp_path: &Path) -> Stri
             .replace("%dir", &temp_dir)
             .replace("%d", &temp_dir)
             .replace("%filename", &temp_filename)
-            .replace("%n", &temp_filename);
+            .replace("%n", &temp_filename)
+            .replace("%output", monitor_name)
+            .replace("%o", monitor_name)
+            .replace("%width", &monitor_w)
+            .replace("%w", &monitor_w)
+            .replace("%height", &monitor_h)
+            .replace("%h", &monitor_h)
+            .replace("%x", &monitor_x)
+            .replace("%y", &monitor_y);
     } else {
         // If no placeholder is present, append the target file path
         cmd = format!("{} {}", cmd.trim(), temp_str);
@@ -225,7 +273,10 @@ pub fn find_newest_image_in_dir(dir: &Path) -> Option<PathBuf> {
 }
 
 /// Executes a custom screenshot capture command with resilient fallback handling
-fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureError> {
+fn capture_via_custom_command(
+    cmd_template: &str,
+    target_monitor: Option<&MonitorInfo>,
+) -> Result<RgbaImage, CaptureError> {
     let temp_dir = std::env::temp_dir();
     let temp_filename = format!("edged_custom_{}.png", std::process::id());
     let temp_path = temp_dir.join(&temp_filename);
@@ -239,7 +290,7 @@ fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureEr
         }
     }
 
-    let cmd_str = expand_command_placeholders(cmd_template, &temp_path);
+    let cmd_str = expand_command_placeholders(cmd_template, &temp_path, target_monitor);
 
     let output = Command::new("sh")
         .arg("-c")
