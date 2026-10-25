@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::ruler::bounds::Rect;
 use crate::ruler::{EdgeDetector, EdgeMeasurement, RulerMode};
 use crate::ui::renderer::Renderer;
+use cairo::ImageSurface;
 use gtk4::gdk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -29,12 +30,13 @@ pub fn create_and_show_overlay(
     app: &gtk4::Application,
     config: Arc<Config>,
     detector: Arc<EdgeDetector>,
+    surface: Arc<ImageSurface>,
     mode: RulerMode,
     initial_tolerance: u8,
 ) {
-    let display = gdk::Display::default().expect("Wayland display não encontrado");
+    let display = gdk::Display::default().expect("Wayland display not found");
 
-    // CSS para transparência completa da janela
+    // CSS styling for full window transparency
     let css_provider = gtk4::CssProvider::new();
     css_provider.load_from_data("window { background-color: transparent; }");
     gtk4::style_context_add_provider_for_display(
@@ -64,6 +66,7 @@ pub fn create_and_show_overlay(
             None,
             config.clone(),
             detector.clone(),
+            surface.clone(),
             state.clone(),
             layer_shell_supported,
         );
@@ -76,6 +79,7 @@ pub fn create_and_show_overlay(
                         Some(monitor),
                         config.clone(),
                         detector.clone(),
+                        surface.clone(),
                         state.clone(),
                         layer_shell_supported,
                     );
@@ -90,6 +94,7 @@ fn build_overlay_window(
     monitor: Option<gdk::Monitor>,
     config: Arc<Config>,
     detector: Arc<EdgeDetector>,
+    surface: Arc<ImageSurface>,
     state: Rc<RefCell<AppState>>,
     layer_shell_supported: bool,
 ) {
@@ -110,7 +115,7 @@ fn build_overlay_window(
             window.set_monitor(Some(m));
         }
     } else {
-        // Fallback para compositores que não suportam layer-shell (ex: GNOME Mutter sem extensões)
+        // Fallback for compositors that do not implement layer-shell (e.g. GNOME Mutter)
         if let Some(ref m) = monitor {
             window.fullscreen_on_monitor(m);
         } else {
@@ -118,7 +123,7 @@ fn build_overlay_window(
         }
     }
 
-    // Define cursor em mira (crosshair)
+    // Set cursor to crosshair
     let cursor = gdk::Cursor::from_name("crosshair", None);
     window.set_cursor(cursor.as_ref());
 
@@ -126,21 +131,47 @@ fn build_overlay_window(
     drawing_area.set_hexpand(true);
     drawing_area.set_vexpand(true);
 
-    // Renderização com Cairo
+    // Monitor geometry for global desktop coordinate mapping
+    let (monitor_x, monitor_y) = if let Some(ref m) = monitor {
+        let geom = m.geometry();
+        (geom.x() as f64, geom.y() as f64)
+    } else {
+        (0.0, 0.0)
+    };
+
+    // Cairo Drawing
     {
         let config = config.clone();
         let state = state.clone();
+        let surface = surface.clone();
+        let win = window.clone();
+
         drawing_area.set_draw_func(move |_, cr, width, height| {
             let st = state.borrow();
             let renderer = Renderer::new(cr, &config);
+            let scale = win.scale_factor() as f64;
 
-            renderer.draw_overlay_background(width as f64, height as f64);
+            // Render background desktop screenshot + overlay tint
+            renderer.draw_background(
+                &surface,
+                monitor_x,
+                monitor_y,
+                scale,
+                width as f64,
+                height as f64,
+            );
 
             if st.mode == RulerMode::Bounds {
                 let active = st.drag_start.map(|start| {
                     Rect::from_points(start.0, start.1, st.cursor.0, st.cursor.1)
                 });
-                renderer.draw_bounds(&st.pinned_rects, active, st.cursor, st.shift_held);
+                renderer.draw_bounds(
+                    &st.pinned_rects,
+                    active,
+                    st.cursor,
+                    scale,
+                    st.shift_held,
+                );
             } else {
                 let hud_val = st.tolerance_hud_until.and_then(|until| {
                     if Instant::now() < until {
@@ -149,20 +180,19 @@ fn build_overlay_window(
                         None
                     }
                 });
-                renderer.draw_spacing_ruler(&st.measurement, st.mode, hud_val);
+                renderer.draw_spacing_ruler(
+                    &st.measurement,
+                    st.mode,
+                    monitor_x,
+                    monitor_y,
+                    scale,
+                    hud_val,
+                );
             }
         });
     }
 
-    // Monitor geometry para conversão de coordenadas absolutas
-    let (monitor_x, monitor_y) = if let Some(ref m) = monitor {
-        let geom = m.geometry();
-        (geom.x() as f64, geom.y() as f64)
-    } else {
-        (0.0, 0.0)
-    };
-
-    // Controller de Movimento do Mouse
+    // Mouse Motion Controller
     {
         let state = state.clone();
         let detector = detector.clone();
@@ -188,7 +218,7 @@ fn build_overlay_window(
         window.add_controller(motion);
     }
 
-    // Controller de Cliques do Mouse
+    // Mouse Click Controller
     {
         let state = state.clone();
         let config = config.clone();
@@ -196,7 +226,7 @@ fn build_overlay_window(
         let app = app.clone();
         let win = window.clone();
         let click = gtk4::GestureClick::new();
-        click.set_button(0); // Captura todos os botões
+        click.set_button(0); // Capture all mouse buttons
 
         click.connect_pressed({
             let state = state.clone();
@@ -215,7 +245,7 @@ fn build_overlay_window(
             let button = gesture.current_button();
 
             if button == gdk::BUTTON_SECONDARY {
-                // Clique com botão direito cancela e fecha o programa
+                // Right click cancels and exits
                 app.quit();
                 return;
             }
@@ -231,14 +261,14 @@ fn build_overlay_window(
                         let h_px = (rect.height * scale).round() as u32;
 
                         if st.shift_held && config.bounds.shift_pins_bounds {
-                            // Segurando shift: fixa o retângulo na tela e permite desenhar novos
+                            // Holding Shift: keep rectangle pinned to screen and continue measuring
                             st.pinned_rects.push(rect);
                             st.drag_start = None;
                             da.queue_draw();
                             return;
                         }
 
-                        // Clique sem shift: copia a medida do retângulo para o clipboard
+                        // Normal release: copy bounds measurement to clipboard and exit
                         let text = format_measurement(
                             RulerMode::Bounds,
                             w_px,
@@ -252,7 +282,7 @@ fn build_overlay_window(
                         }
                     }
                 } else {
-                    // Modo Spacing / Horizontal / Vertical: copia a medida atual para o clipboard
+                    // Spacing / Horizontal / Vertical modes: copy measurement and exit
                     let text = format_measurement(
                         st.mode,
                         st.measurement.width,
@@ -271,7 +301,7 @@ fn build_overlay_window(
         window.add_controller(click);
     }
 
-    // Controller de Scroll da Roda do Mouse (Ajuste dinâmico de tolerância)
+    // Mouse Scroll Wheel Controller (Dynamic tolerance adjustment)
     {
         let state = state.clone();
         let detector = detector.clone();
@@ -286,7 +316,7 @@ fn build_overlay_window(
             if st.mode != RulerMode::Bounds {
                 let step = config.ruler.tolerance_step as i32;
                 let current = st.tolerance as i32;
-                // Scroll para cima (dy < 0) aumenta a tolerância; para baixo (dy > 0) diminui
+                // Scroll up (dy < 0) increases tolerance; scroll down (dy > 0) decreases tolerance
                 let new_tol = if dy < 0.0 {
                     (current + step).min(100)
                 } else if dy > 0.0 {
@@ -312,7 +342,7 @@ fn build_overlay_window(
         window.add_controller(scroll);
     }
 
-    // Controller do Teclado (Esc, Shift, etc.)
+    // Keyboard Controller (Esc, Shift, etc.)
     {
         let state = state.clone();
         let da = drawing_area.clone();

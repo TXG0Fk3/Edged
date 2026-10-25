@@ -179,68 +179,68 @@ pub struct Config {
 }
 
 pub const DEFAULT_CONFIG_COMMENTED: &str = r##"# ==============================================================================
-# Edged - Screen Ruler para Wayland (Hyprland, GNOME, Sway, etc.)
-# Arquivo de configuração: ~/.config/edged/config.toml
+# Edged - Screen Ruler for Wayland (Hyprland, GNOME, Sway, River, etc.)
+# Configuration file: ~/.config/edged/config.toml
 # ==============================================================================
 
 [general]
-# Modo padrão ao iniciar sem argumentos: "bounds", "spacing", "horizontal", "vertical"
+# Default mode when starting without arguments: "bounds", "spacing", "horizontal", "vertical"
 default_mode = "spacing"
 
-# Método de captura de tela: "auto", "grim", "portal", "command"
-# - "auto": Tenta 'grim' primeiro (wlroots / Hyprland / Sway), com fallback para xdg-desktop-portal (GNOME / KDE)
-# - "grim": Força uso do 'grim'
-# - "portal": Força uso do portal XDG Desktop (PipeWire / Screenshot portal)
-# - "command": Executa um comando customizado definido abaixo
+# Screen capture method: "auto", "grim", "portal", "command"
+# - "auto": Tries 'grim' first (instant on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
+# - "grim": Forces using the 'grim' utility
+# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
+# - "command": Executes a custom shell command specified below
 capture_method = "auto"
 
-# Comando customizado caso capture_method = "command"
-# Use %s onde o caminho do arquivo temporário PNG de saída deve ser inserido.
-# Exemplo: "wayshot --file %s"
+# Custom shell command when capture_method = "command"
+# Use %s where the output temporary PNG path should be inserted.
+# Example: "wayshot --file %s"
 custom_capture_command = ""
 
-# Se deve fechar o aplicativo imediatamente após copiar a medida com o clique esquerdo
+# Whether to close the application immediately after copying a measurement
 close_on_copy = true
 
 [ruler]
-# Tolerância inicial para edge detection (em porcentagem: 1 a 100)
-# Quanto menor, mais sensível a pequenas variações de cor.
+# Initial tolerance percentage for edge detection (1 to 100)
+# Lower values are more sensitive to subtle color variations.
 initial_tolerance = 15
 
-# Variação da tolerância a cada "tick" de scroll da roda do mouse
+# Tolerance adjustment step per mouse scroll wheel tick
 tolerance_step = 2
 
-# Desenhar "pés" (linhas perpendiculares nas pontas das réguas indicando os limites exatos)
+# Draw feet (perpendicular tick marks at line ends showing exact measurement bounds)
 draw_feet = true
 
-# Tamanho dos pés em pixels
+# Size of the feet tick marks in pixels
 feet_size = 10.0
 
-# Espessura da linha de medição
+# Thickness of the measurement lines in pixels
 line_thickness = 2.0
 
-# Exibir mira central sutil na posição exata do cursor
+# Display a subtle crosshair at the cursor position
 draw_crosshair = true
 
 [bounds]
-# No modo Bounds, manter Shift pressionado fixa retângulos anteriores na tela
+# In Bounds mode, holding Shift keeps previously drawn rectangles pinned to the screen
 shift_pins_bounds = true
 
-# Espessura da borda do retângulo no modo Bounds
+# Border thickness for rectangles in Bounds mode
 border_thickness = 2.0
 
 [appearance]
-# Opacidade do fundo escurecido da tela (0.0 = totalmente transparente, 0.05 = leve escurecimento)
+# Dim overlay opacity (0.0 = completely transparent, 0.05 = subtle dimming)
 overlay_opacity = 0.05
 
-# Cores no formato hexadecimal "#RRGGBB", "#RRGGBBAA" ou "rgba(r, g, b, a)"
+# Colors formatted as hex "#RRGGBB", "#RRGGBBAA", or "rgba(r, g, b, a)"
 line_color = "#3B82F6"
 line_shadow_color = "rgba(0, 0, 0, 0.6)"
 
 bounds_fill_color = "rgba(59, 130, 246, 0.15)"
 bounds_border_color = "#3B82F6"
 
-# Estilo das etiquetas numéricas (badges)
+# Label badges styling
 label_bg_color = "rgba(15, 23, 42, 0.90)"
 label_text_color = "#F8FAFC"
 label_border_color = "#475569"
@@ -251,25 +251,25 @@ label_padding_x = 7.0
 label_padding_y = 3.5
 
 [units]
-# Exibir o sufixo "px" nas etiquetas
+# Show the "px" suffix on labels
 show_pixel_unit = true
 
-# Unidade secundária opcional: "none", "inch", "cm", "mm", "pt"
+# Optional secondary unit: "none", "inch", "cm", "mm", "pt"
 secondary_unit = "none"
 
-# DPI para cálculo da unidade secundária
+# Screen DPI for secondary unit calculations
 screen_dpi = 96.0
 
 [clipboard]
-# Formato do texto copiado ao clicar:
-# - "compact": ex: "1920x1080", "120"
-# - "verbose": ex: "1920 × 1080 px", "120 px"
-# - "css":     ex: "width: 1920px; height: 1080px;", "width: 120px;"
+# Text format copied to clipboard on click:
+# - "compact": e.g. "1920x1080", "120"
+# - "verbose": e.g. "1920 × 1080 px", "120 px"
+# - "css":     e.g. "width: 1920px; height: 1080px;", "width: 120px;"
 format = "compact"
 "##;
 
 impl Config {
-    /// Determina o caminho padrão de configuração: ~/.config/edged/config.toml
+    /// Returns default config path: ~/.config/edged/config.toml
     pub fn default_path() -> PathBuf {
         if let Some(config_dir) = dirs::config_dir() {
             config_dir.join("edged").join("config.toml")
@@ -278,8 +278,8 @@ impl Config {
         }
     }
 
-    /// Carrega as configurações a partir do caminho informado ou do caminho padrão.
-    /// Se o arquivo não existir, cria o diretório e o arquivo com os valores padrão comentados.
+    /// Loads configuration from given path or default path.
+    /// If file does not exist, creates parent directory and writes default commented configuration.
     pub fn load_or_create(custom_path: Option<&Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let path = match custom_path {
             Some(p) => p.to_path_buf(),
@@ -291,7 +291,7 @@ impl Config {
                 fs::create_dir_all(parent)?;
             }
             fs::write(&path, DEFAULT_CONFIG_COMMENTED)?;
-            log_info(&format!("Arquivo de configuração padrão criado em {:?}", path));
+            log_info(&format!("Created default configuration file at {:?}", path));
             let cfg: Config = toml::from_str(DEFAULT_CONFIG_COMMENTED)?;
             return Ok(cfg);
         }
@@ -301,7 +301,7 @@ impl Config {
             Ok(cfg) => Ok(cfg),
             Err(err) => {
                 eprintln!(
-                    "Aviso: Erro ao analisar {:?}: {}. Usando configurações padrão.",
+                    "[edged] Warning: Error parsing {:?}: {}. Using default configuration.",
                     path, err
                 );
                 let fallback: Config = toml::from_str(DEFAULT_CONFIG_COMMENTED)?;
@@ -311,7 +311,7 @@ impl Config {
     }
 }
 
-/// Utilitário simples para parsear cores em tuplas RGBA (0.0 a 1.0) para uso com Cairo.
+/// Helper to parse color strings into RGBA tuples (0.0 to 1.0) for Cairo.
 pub fn parse_color(color_str: &str) -> (f64, f64, f64, f64) {
     let s = color_str.trim();
 
@@ -367,7 +367,7 @@ pub fn parse_color(color_str: &str) -> (f64, f64, f64, f64) {
         }
     }
 
-    // Cor padrão caso a formatação falhe (azul padrão)
+    // Default fallback blue
     (0.23, 0.51, 0.96, 1.0)
 }
 

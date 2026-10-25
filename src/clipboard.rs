@@ -29,16 +29,16 @@ pub fn format_measurement(
 }
 
 pub fn copy_to_clipboard(text: &str) {
-    // 1. Tenta definir no clipboard do GTK4 se a sessão gráfica estiver ativa
+    // 1. Set text on the active GTK4 display clipboard if available
     if let Some(display) = gdk4::Display::default() {
         display.clipboard().set_text(text);
     }
 
-    // 2. Garante persistência em Wayland usando `wl-copy` caso esteja instalado
+    // 2. Spawn `wl-copy` to ensure persistence across Wayland compositors even after process exit
     let _ = Command::new("wl-copy")
         .arg("--")
         .arg(text)
         .spawn();
 
-    println!("[edged] Copiado para o clipboard: {}", text);
+    println!("[edged] Copied to clipboard: {}", text);
 }

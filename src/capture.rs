@@ -36,7 +36,7 @@ impl From<std::io::Error> for CaptureError {
     }
 }
 
-/// Executa a captura de tela de acordo com o método configurado
+/// Executes screen capture according to the configured capture method
 pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
     match config.general.capture_method {
         CaptureMethod::Grim => capture_via_grim(),
@@ -44,22 +44,22 @@ pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
         CaptureMethod::Command => {
             if config.general.custom_capture_command.is_empty() {
                 Err(CaptureError::CommandFailed(
-                    "custom_capture_command não configurado".to_string(),
+                    "custom_capture_command is empty".to_string(),
                 ))
             } else {
                 capture_via_custom_command(&config.general.custom_capture_command)
             }
         }
         CaptureMethod::Auto => {
-            // Tenta 'grim' primeiro (comum e instantâneo em wlroots/Hyprland/Sway)
+            // Try 'grim' first (instant on wlroots/Hyprland/Sway)
             match capture_via_grim() {
                 Ok(img) => Ok(img),
                 Err(grim_err) => {
-                    // Fallback para xdg-desktop-portal (GNOME, KDE Plasma, etc.)
+                    // Fall back to xdg-desktop-portal (GNOME, KDE Plasma, etc.)
                     match capture_via_portal() {
                         Ok(img) => Ok(img),
                         Err(portal_err) => {
-                            // Se houver comando customizado, tenta como último recurso
+                            // If a custom command is configured, try it as a last resort
                             if !config.general.custom_capture_command.is_empty() {
                                 capture_via_custom_command(&config.general.custom_capture_command)
                             } else {
@@ -75,7 +75,7 @@ pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
     }
 }
 
-/// Captura a tela usando o utilitário `grim` (Wayland screencopy)
+/// Captures the screen using the `grim` utility (Wayland screencopy)
 pub fn capture_via_grim() -> Result<RgbaImage, CaptureError> {
     let temp_path = std::env::temp_dir().join(format!("edged_grim_{}.png", std::process::id()));
 
@@ -95,7 +95,7 @@ pub fn capture_via_grim() -> Result<RgbaImage, CaptureError> {
 
             if !temp_path.exists() {
                 return Err(CaptureError::GrimFailed(
-                    "Arquivo de saída do grim não foi gerado".to_string(),
+                    "Grim output file was not created".to_string(),
                 ));
             }
 
@@ -108,31 +108,31 @@ pub fn capture_via_grim() -> Result<RgbaImage, CaptureError> {
     }
 }
 
-/// Captura a tela via XDG Desktop Portal (org.freedesktop.portal.Screenshot)
+/// Captures the screen via XDG Desktop Portal (org.freedesktop.portal.Screenshot)
 pub fn capture_via_portal() -> Result<RgbaImage, CaptureError> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|e| CaptureError::PortalFailed(format!("Erro ao criar tokio runtime: {}", e)))?;
+        .map_err(|e| CaptureError::PortalFailed(format!("Failed to create tokio runtime: {}", e)))?;
 
     let uri_string = rt.block_on(async {
         let request = Screenshot::request().interactive(false).modal(false);
         let response = request
             .send()
             .await
-            .map_err(|e| format!("Falha na chamada do portal: {}", e))?
+            .map_err(|e| format!("Portal call failed: {}", e))?
             .response()
-            .map_err(|e| format!("Falha na resposta do portal: {}", e))?;
+            .map_err(|e| format!("Portal response failed: {}", e))?;
         Ok::<String, String>(response.uri().as_str().to_string())
     }).map_err(CaptureError::PortalFailed)?;
 
-    // Converte URI file:// para caminho do sistema de arquivos
+    // Convert file:// URI to a local filesystem path
     let file_path = uri_to_path(&uri_string)
-        .ok_or_else(|| CaptureError::PortalFailed(format!("URI inválido: {}", uri_string)))?;
+        .ok_or_else(|| CaptureError::PortalFailed(format!("Invalid URI: {}", uri_string)))?;
 
     if !file_path.exists() {
         return Err(CaptureError::PortalFailed(format!(
-            "Arquivo do screenshot não encontrado em {:?}",
+            "Screenshot file not found at {:?}",
             file_path
         )));
     }
@@ -140,13 +140,13 @@ pub fn capture_via_portal() -> Result<RgbaImage, CaptureError> {
     let img = image::open(&file_path)
         .map_err(|e| CaptureError::ImageDecodeFailed(e.to_string()))?;
 
-    // Remove o arquivo de screenshot do portal para não poluir a pasta do usuário
+    // Clean up temporary screenshot file created by portal
     let _ = fs::remove_file(&file_path);
 
     Ok(img.to_rgba8())
 }
 
-/// Executa um comando de captura de tela personalizado
+/// Executes a custom screenshot capture command
 fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureError> {
     let temp_path = std::env::temp_dir().join(format!("edged_custom_{}.png", std::process::id()));
     let temp_str = temp_path.to_string_lossy().to_string();
@@ -166,14 +166,14 @@ fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureEr
     if !status.success() {
         let _ = fs::remove_file(&temp_path);
         return Err(CaptureError::CommandFailed(format!(
-            "Comando terminou com código: {:?}",
+            "Command exited with status code: {:?}",
             status.code()
         )));
     }
 
     if !temp_path.exists() {
         return Err(CaptureError::CommandFailed(
-            "Comando customizado não gerou o arquivo esperado".to_string(),
+            "Custom command did not produce the expected output file".to_string(),
         ));
     }
 
@@ -184,7 +184,34 @@ fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureEr
     Ok(img.to_rgba8())
 }
 
-/// Converte um URI file:// para PathBuf com decodificação de porcentagem
+/// Converts an RgbaImage to a Cairo ImageSurface for hardware-accelerated rendering
+pub fn rgba_to_cairo_surface(img: &RgbaImage) -> Result<cairo::ImageSurface, Box<dyn std::error::Error>> {
+    let (width, height) = img.dimensions();
+    let mut surface = cairo::ImageSurface::create(cairo::Format::Rgb24, width as i32, height as i32)?;
+    let stride = surface.stride() as usize;
+    {
+        let mut data = surface
+            .data()
+            .map_err(|e| format!("Failed to borrow surface data: {:?}", e))?;
+        let raw = img.as_raw();
+        for y in 0..height as usize {
+            let src_row = y * (width as usize) * 4;
+            let dst_row = y * stride;
+            for x in 0..width as usize {
+                let src_idx = src_row + x * 4;
+                let dst_idx = dst_row + x * 4;
+                // Cairo Rgb24 on host endianness (little-endian x86_64: BGRA)
+                data[dst_idx] = raw[src_idx + 2];     // B
+                data[dst_idx + 1] = raw[src_idx + 1]; // G
+                data[dst_idx + 2] = raw[src_idx];     // R
+                data[dst_idx + 3] = 0xFF;             // Unused / Alpha
+            }
+        }
+    }
+    Ok(surface)
+}
+
+/// Converts a file:// URI to a PathBuf with percent-decoding
 fn uri_to_path(uri: &str) -> Option<PathBuf> {
     let stripped = uri.strip_prefix("file://")?;
     let decoded = url_decode(stripped);

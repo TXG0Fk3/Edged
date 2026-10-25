@@ -1,67 +1,67 @@
 # Edged 📐
 
-> Réplica fiel, moderna e de alta performance do **PowerToys Screen Ruler** nativa para **Wayland** (Hyprland, GNOME, Sway, River, KDE, etc.).
+> High-quality, fast, and faithful **PowerToys Screen Ruler** replica built natively for **Wayland** (Hyprland, GNOME, Sway, River, KDE Plasma, etc.).
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Wayland](https://img.shields.io/badge/display-Wayland-blue.svg)](https://wayland.freedesktop.org/)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-green.svg)](LICENSE)
 
-O **Edged** é uma régua de tela pixel-accurate projetada especialmente para o ecossistema Wayland moderno. Ele permite medir distâncias, caixas delimitadoras, espaçamentos, margens e padding entre elementos da interface com detecção de bordas em tempo real.
+**Edged** is a pixel-accurate screen measuring tool designed specifically for modern Wayland environments. It allows you to measure distances, bounding boxes, margins, padding, and spacing between UI elements using real-time edge detection.
 
 ---
 
-## ✨ Características
+## ✨ Features
 
-- ⚡ **Modelo de Ativação One-Shot**: O programa **não** roda em segundo plano consumindo memória. Inicia instantaneamente via comando de terminal e fecha assim que você copia a medida ou pressiona <kbd>Esc</kbd>.
-- 🎯 **Detecção de Bordas em Tempo Real**: Caminha pelos pixels a partir do cursor nas 4 direções cardeais com base na diferença de cor euclidiana.
-- 🔄 **Ajuste Dinâmico de Tolerância**: Gire a roda de scroll do mouse para aumentar ou diminuir a sensibilidade da detecção de bordas em tempo real, com feedback visual instantâneo (HUD).
-- 📦 **Modo Bounds**: Clique e arraste para desenhar retângulos delimitadores exibindo `Largura × Altura`.
-- 📌 **Fixação com Shift**: Mantenha <kbd>Shift</kbd> pressionado no modo Bounds para manter múltiplos retângulos fixados na tela.
-- 📏 **Pés Delimitadores ("Draw Feet")**: Traços perpendiculares nas pontas das linhas para visualização precisa dos limites medidos.
-- 📋 **Clique para Copiar**: Clique com o botão esquerdo para copiar a medida diretamente para a área de transferência (`wl-clipboard` / GTK) em formatos configuráveis (`compact`, `verbose` ou `css`).
-- 🖥️ **Wayland Nativo e Multi-Monitor**: Suporte a `wlr-layer-shell` (em compositores wlroots como Hyprland e Sway) e fallback automático para janela de overlay fullscreen no GNOME Mutter. Suporta monitores múltiplos e fractional scaling.
-- 📸 **Estratégia Híbrida de Captura de Tela**: Integração direta com `grim` (screencopy instantâneo) e `xdg-desktop-portal` (PipeWire / Screenshot portal sem janelas de diálogo).
-- ⚙️ **Configuração Flexível**: Arquivo `~/.config/edged/config.toml` auto-gerado com valores padrão bem documentados.
+- ⚡ **One-Shot Activation Model**: Does **not** run as a persistent background daemon eating CPU or RAM. Launches instantly via terminal command and exits as soon as you copy your measurement or hit <kbd>Esc</kbd>.
+- 🎯 **Real-time Edge Detection**: Walks outwards from the cursor across 4 cardinal directions (up, down, left, right) based on Euclidean color differences.
+- 🔄 **Dynamic Scroll-wheel Tolerance**: Scroll your mouse wheel up or down to adjust edge sensitivity in real-time with an instant HUD progress indicator.
+- 📦 **Bounds Mode**: Click and drag to measure rectangular regions displaying `Width × Height`.
+- 📌 **Shift to Pin**: Hold <kbd>Shift</kbd> in Bounds mode to pin previously drawn rectangles to the screen and measure multiple areas simultaneously.
+- 📏 **Draw Feet**: Perpendicular tick marks at measurement line ends for clear boundary visibility.
+- 📋 **Click to Copy**: Primary click copies the measurement directly to your Wayland clipboard (`wl-clipboard` / GTK) in configurable formats (`compact`, `verbose`, or `css`).
+- 🖥️ **Native Wayland & Multi-Monitor**: Uses `wlr-layer-shell` on wlroots compositors (Hyprland, Sway, River) and seamless overlay fallback on GNOME Mutter. Full support for fractional scaling and multi-monitor setups.
+- 📸 **Freeze-frame Rendering (No Black Screen)**: Captures the screen before presenting the overlay, drawing the frozen desktop snapshot underneath the ruler with zero flicker.
+- ⚙️ **Fully Configurable**: Generates a documented `~/.config/edged/config.toml` file automatically on first run.
 
 ---
 
-## 🚀 Modos de Uso (CLI)
+## 🚀 CLI Usage
 
-O Edged segue o padrão das ferramentas modernas do ecossistema Wayland (como `slurp`, `grim`, `swappy`):
+Edged follows the Unix philosophy of modern Wayland tools (like `slurp`, `grim`, `swappy`):
 
 ```bash
-edged                 # Inicia no modo padrão configurado (default: Spacing)
-edged --bounds        # Modo Bounds: clique e arraste para medir áreas retangulares
-edged --spacing       # Modo Spacing: mira em cruz medindo espaçamentos horizontais e verticais
-edged --horizontal    # Medição contínua apenas horizontal
-edged --vertical      # Medição contínua apenas vertical
+edged                 # Starts in default mode from config (default: spacing)
+edged --bounds        # Bounds mode: click and drag rectangular bounding boxes
+edged --spacing       # Spacing mode: 4-way cross measuring margins and padding
+edged --horizontal    # Horizontal line measuring distance between color edges
+edged --vertical      # Vertical line measuring distance between color edges
 ```
 
-### Argumentos Adicionais
+### Additional Flags
 
 ```bash
-edged --tolerance 25                # Sobrescreve a tolerância inicial (1 a 100%)
-edged --config /caminho/config.toml # Usa um arquivo de configuração alternativo
-edged --help                        # Exibe o manual de ajuda
-edged --version                     # Exibe a versão instalada
+edged --tolerance 25                # Override initial edge detection tolerance (1 to 100%)
+edged --config /path/to/config.toml # Use custom configuration file
+edged --help                        # Show help information
+edged --version                     # Print version
 ```
 
 ---
 
-## 🎮 Controles Durante a Medição
+## 🎮 Overlay Controls
 
-| Controle | Ação |
+| Control | Action |
 | :--- | :--- |
-| **Mover Cursor** | Atualiza a detecção de bordas ou o dimensionamento da área em tempo real |
-| **Scroll Up / Down** | Aumenta ou diminui a tolerância da detecção de borda dinamicamente |
-| **Clique Esquerdo** | Copia a medição atual para a área de transferência e fecha o Edged |
-| **Shift + Clique** *(Bounds)* | Fixa o retângulo desenhado na tela para permitir desenhar outros |
-| **Esc / Tecla Q** | Fecha o Edged imediatamente sem copiar |
-| **Clique Direito** | Cancela e fecha a ferramenta |
+| **Move Cursor** | Updates edge detection lines or bounding box in real time |
+| **Mouse Wheel Up / Down** | Dynamically increases or decreases edge detection tolerance |
+| **Left Click** | Copies active measurement to clipboard and exits |
+| **Shift + Release** *(Bounds)* | Pins the rectangle to screen to measure additional regions |
+| **Esc / Q Key** | Closes Edged immediately without copying |
+| **Right Click** | Cancels and exits immediately |
 
 ---
 
-## ⌨️ Exemplos de Keybinds
+## ⌨️ Window Manager Keybinds
 
 ### Hyprland (`~/.config/hypr/hyprland.conf`)
 
@@ -83,13 +83,13 @@ bindsym $mod+Control+h exec edged --horizontal
 bindsym $mod+Control+v exec edged --vertical
 ```
 
-### GNOME
+### GNOME Shell
 
-Você pode adicionar os atalhos em **Configurações → Teclado → Atalhos Personalizados**:
-1. **Nome**: `Edged Spacing Ruler` | **Comando**: `edged --spacing` | **Atalho**: <kbd>Super</kbd> + <kbd>M</kbd>
-2. **Nome**: `Edged Bounds Ruler` | **Comando**: `edged --bounds` | **Atalho**: <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>
+Add custom shortcuts in **Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts**:
+- **Name**: `Edged Spacing Ruler` | **Command**: `edged --spacing` | **Shortcut**: <kbd>Super</kbd> + <kbd>M</kbd>
+- **Name**: `Edged Bounds Ruler`  | **Command**: `edged --bounds`  | **Shortcut**: <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>
 
-Ou configure diretamente via terminal:
+Or configure via `gsettings` in terminal:
 
 ```bash
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ name 'Edged Ruler'
@@ -99,69 +99,70 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/or
 
 ---
 
-## ⚙️ Arquivo de Configuração
+## ⚙️ Configuration File
 
-Na primeira execução, o Edged cria automaticamente o arquivo em:
+On first run, Edged automatically creates a configuration file at:
 
 `~/.config/edged/config.toml`
 
-Exemplo completo e documentado:
+Full configuration options:
 
 ```toml
 [general]
-# Modo padrão ao iniciar sem argumentos: "bounds", "spacing", "horizontal", "vertical"
+# Default mode when starting without arguments: "bounds", "spacing", "horizontal", "vertical"
 default_mode = "spacing"
 
-# Método de captura de tela: "auto", "grim", "portal", "command"
-# - "auto": Tenta 'grim' primeiro (wlroots/Hyprland), com fallback para xdg-desktop-portal (GNOME/KDE)
-# - "grim": Força uso do grim
-# - "portal": Força uso do portal XDG Desktop
+# Screen capture method: "auto", "grim", "portal", "command"
+# - "auto": Tries 'grim' first (instant on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
+# - "grim": Forces using the 'grim' utility
+# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
+# - "command": Executes a custom shell command specified below
 capture_method = "auto"
 
-# Comando customizado caso capture_method = "command" (use %s para o caminho do arquivo temporário)
+# Custom shell command when capture_method = "command" (use %s for output path)
 custom_capture_command = ""
 
-# Se deve fechar o aplicativo imediatamente após copiar a medida com o clique esquerdo
+# Whether to close the application immediately after copying a measurement
 close_on_copy = true
 
 [ruler]
-# Tolerância inicial para edge detection (em porcentagem: 1 a 100)
+# Initial tolerance percentage for edge detection (1 to 100)
 initial_tolerance = 15
 
-# Variação da tolerância a cada "tick" de scroll da roda do mouse
+# Tolerance adjustment step per mouse scroll wheel tick
 tolerance_step = 2
 
-# Desenhar "pés" (linhas delimitadoras nas extremidades das medições)
+# Draw feet (perpendicular tick marks at line ends showing exact measurement bounds)
 draw_feet = true
 
-# Tamanho dos pés em pixels
+# Size of the feet tick marks in pixels
 feet_size = 10.0
 
-# Espessura da linha de medição
+# Thickness of the measurement lines in pixels
 line_thickness = 2.0
 
-# Exibir mira central sutil na posição exata do cursor
+# Display a subtle crosshair at the cursor position
 draw_crosshair = true
 
 [bounds]
-# Manter Shift pressionado fixa os retângulos desenhados anteriormente na tela
+# In Bounds mode, holding Shift keeps previously drawn rectangles pinned to the screen
 shift_pins_bounds = true
 
-# Espessura da borda do retângulo no modo Bounds
+# Border thickness for rectangles in Bounds mode
 border_thickness = 2.0
 
 [appearance]
-# Opacidade do fundo escurecido da tela (0.0 = totalmente transparente, 0.05 = sutil)
+# Dim overlay opacity (0.0 = completely transparent, 0.05 = subtle dimming)
 overlay_opacity = 0.05
 
-# Cores: formatos "#RRGGBB", "#RRGGBBAA" ou "rgba(r, g, b, a)"
+# Colors formatted as hex "#RRGGBB", "#RRGGBBAA", or "rgba(r, g, b, a)"
 line_color = "#3B82F6"
 line_shadow_color = "rgba(0, 0, 0, 0.6)"
 
 bounds_fill_color = "rgba(59, 130, 246, 0.15)"
 bounds_border_color = "#3B82F6"
 
-# Estilo das etiquetas numéricas (badges)
+# Label badges styling
 label_bg_color = "rgba(15, 23, 42, 0.90)"
 label_text_color = "#F8FAFC"
 label_border_color = "#475569"
@@ -172,94 +173,94 @@ label_padding_x = 7.0
 label_padding_y = 3.5
 
 [units]
-# Exibir o sufixo "px" nas etiquetas
+# Show the "px" suffix on labels
 show_pixel_unit = true
 
-# Unidade secundária opcional: "none", "inch", "cm", "mm", "pt"
+# Optional secondary unit: "none", "inch", "cm", "mm", "pt"
 secondary_unit = "none"
 
-# DPI para cálculo da unidade secundária
+# Screen DPI for secondary unit calculations
 screen_dpi = 96.0
 
 [clipboard]
-# Formato do texto copiado ao clicar:
-# - "compact": ex: "1920x1080", "120"
-# - "verbose": ex: "1920 × 1080 px", "120 px"
-# - "css":     ex: "width: 1920px; height: 1080px;", "width: 120px;"
+# Text format copied to clipboard on click:
+# - "compact": e.g. "1920x1080", "120"
+# - "verbose": e.g. "1920 × 1080 px", "120 px"
+# - "css":     e.g. "width: 1920px; height: 1080px;", "width: 120px;"
 format = "compact"
 ```
 
 ---
 
-## 🛠️ Compilação e Instalação
+## 🛠️ Build and Installation
 
-### Pré-requisitos (Arch Linux)
+### Prerequisites
 
+#### Arch Linux
 ```bash
 sudo pacman -S rust cargo gtk4 gtk4-layer-shell cairo pango wl-clipboard
-# Opcional (recomendado para Hyprland/Sway):
+# Optional (recommended for Hyprland/Sway):
 sudo pacman -S grim
 ```
 
-### Pré-requisitos (Fedora)
-
+#### Fedora
 ```bash
 sudo dnf install rust cargo gtk4-devel gtk4-layer-shell-devel cairo-devel pango-devel wl-clipboard
-# Opcional para compositores wlroots:
+# Optional for wlroots compositors:
 sudo dnf install grim
 ```
 
-### Pré-requisitos (Ubuntu / Debian 23.04+)
-
+#### Ubuntu / Debian (23.04+)
 ```bash
 sudo apt install cargo libgtk-4-dev libgtk4-layer-shell-dev libcairo2-dev libpango1.0-dev wl-clipboard
-# Opcional:
+# Optional:
 sudo apt install grim
 ```
 
-### Compilando o Binário Release
+### Compiling Release Binary
 
 ```bash
-git clone https://github.com/txg0fk3/Edged.git # ou seu repositório local
+git clone https://github.com/txg0fk3/Edged.git
 cd Edged
 cargo build --release
 ```
 
-O binário otimizado estará disponível em `target/release/edged`.
+The compiled binary will be placed at `target/release/edged`.
 
-### Instalando no Sistema
+### System Installation
 
 ```bash
-# Copia para o PATH local do usuário
+# Copy binary to your user PATH
 cp target/release/edged ~/.local/bin/
 
-# Ou instala globalmente para todos os usuários
+# Or install system-wide
 sudo cp target/release/edged /usr/local/bin/
 
-# Opcional: Instala o arquivo .desktop para inicialização por launchers (wofi, rofi, etc.)
+# Optional: Install desktop entry for app launchers (wofi, rofi, fuzzel)
 cp edged.desktop ~/.local/share/applications/
 ```
 
 ---
 
-## 🧪 Testes
+## 🧪 Testing
 
-Para executar a suite de testes automatizados:
+To run the automated test suite:
 
 ```bash
 cargo test
 ```
 
-A suite cobre:
-- Detecção de caixas e bordas com limites de pixels
-- Variação de tolerância em gradientes
-- Cálculo de retângulos em Bounds
-- Formatação de clipboard (`compact`, `verbose`, `css`)
-- Parsing de cores CSS / Hex
-- Criação e validação do `config.toml`
+The test suite covers:
+- Synthetic box and edge boundary detection
+- Gradient tolerance thresholds
+- Bounds rectangle geometry and reverse drag normalization
+- Clipboard formatting (`compact`, `verbose`, `css`)
+- Color parser (hex, rgb, rgba)
+- Configuration file creation, parsing, and validation
+- Cairo surface conversion
 
 ---
 
-## 📄 Licença
+## 📄 License
 
-Distribuído sob licença MIT ou Apache-2.0.
+Distributed under either MIT License or Apache-2.0 License.

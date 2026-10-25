@@ -59,7 +59,7 @@ impl EdgeDetector {
         (self.width, self.height)
     }
 
-    /// Detecta as bordas em 4 direções a partir de (cx, cy) com a tolerância especificada (1..=100)
+    /// Detects edges in 4 cardinal directions starting from (cx, cy) with the specified tolerance (1..=100)
     pub fn detect_edges(&self, cx: u32, cy: u32, tolerance_pct: u8) -> EdgeMeasurement {
         if self.width == 0 || self.height == 0 {
             return EdgeMeasurement::empty(cx, cy);
@@ -76,14 +76,14 @@ impl EdgeDetector {
         let base_g = raw[base_idx + 1] as i32;
         let base_b = raw[base_idx + 2] as i32;
 
-        // Tolerância em porcentagem convertida para distância euclidiana ao quadrado
-        // Distância euclidiana máxima no espaço RGB = sqrt(255^2 * 3) ~= 441.67
+        // Tolerance percentage converted to squared Euclidean distance threshold
+        // Maximum Euclidean distance in RGB space = sqrt(255^2 * 3) ~= 441.67
         let tol_factor = (tolerance_pct.clamp(1, 100) as f64) / 100.0;
         let max_dist = 441.6729559300637;
         let thresh_dist = tol_factor * max_dist;
         let thresh_sq = (thresh_dist * thresh_dist) as i32;
 
-        // Marcha para a ESQUERDA
+        // March LEFT
         let mut left_x = cx;
         while left_x > 0 {
             let next_x = left_x - 1;
@@ -103,7 +103,7 @@ impl EdgeDetector {
             left_x = next_x;
         }
 
-        // Marcha para a DIREITA
+        // March RIGHT
         let mut right_x = cx;
         while right_x + 1 < self.width {
             let next_x = right_x + 1;
@@ -123,7 +123,7 @@ impl EdgeDetector {
             right_x = next_x;
         }
 
-        // Marcha para CIMA
+        // March UP
         let mut top_y = cy;
         while top_y > 0 {
             let next_y = top_y - 1;
@@ -143,7 +143,7 @@ impl EdgeDetector {
             top_y = next_y;
         }
 
-        // Marcha para BAIXO
+        // March DOWN
         let mut bottom_y = cy;
         while bottom_y + 1 < self.height {
             let next_y = bottom_y + 1;

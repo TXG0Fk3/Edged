@@ -42,8 +42,8 @@ fn test_color_parsing() {
 
 #[test]
 fn test_edge_detection_box() {
-    // Cria imagem 100x100 com fundo preto (0,0,0)
-    // e um botão/caixa vermelha (255,0,0) de x=20..=79 (largura 60) e y=30..=69 (altura 40)
+    // Create 100x100 image with black background (0,0,0)
+    // and a red box/button (255,0,0) from x=20..=79 (width 60) and y=30..=69 (height 40)
     let mut img = RgbaImage::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
 
     for y in 30..=69 {
@@ -54,7 +54,7 @@ fn test_edge_detection_box() {
 
     let detector = EdgeDetector::new(Arc::new(img));
 
-    // Cursor dentro da caixa vermelha em (50, 50)
+    // Cursor inside red box at (50, 50)
     let m = detector.detect_edges(50, 50, 15);
     assert_eq!(m.left_x, 20);
     assert_eq!(m.right_x, 79);
@@ -63,8 +63,8 @@ fn test_edge_detection_box() {
     assert_eq!(m.width, 60);
     assert_eq!(m.height, 40);
 
-    // Cursor no fundo preto em (10, 50)
-    // Deve parar na borda esquerda da caixa (x=19) e na borda esquerda da tela (x=0)
+    // Cursor on black background at (10, 50)
+    // Should stop at left edge of the screen (x=0) and left boundary of red box (x=19)
     let m_bg = detector.detect_edges(10, 50, 15);
     assert_eq!(m_bg.left_x, 0);
     assert_eq!(m_bg.right_x, 19);
@@ -73,21 +73,21 @@ fn test_edge_detection_box() {
 
 #[test]
 fn test_edge_detection_tolerance() {
-    // Imagem com gradiente suave
+    // Image with linear gradient
     let mut img = RgbaImage::new(100, 100);
     for y in 0..100 {
         for x in 0..100 {
-            let val = (x * 2) as u8; // 0 a 198
+            let val = (x * 2) as u8; // 0 to 198
             img.put_pixel(x, y, Rgba([val, val, val, 255]));
         }
     }
 
     let detector = EdgeDetector::new(Arc::new(img));
 
-    // Com tolerância baixa (5%), o alcance horizontal é menor
+    // Low tolerance (5%): narrow horizontal extent
     let m_low = detector.detect_edges(50, 50, 5);
 
-    // Com tolerância alta (30%), o alcance horizontal é muito maior
+    // High tolerance (30%): wide horizontal extent
     let m_high = detector.detect_edges(50, 50, 30);
 
     assert!(m_high.width > m_low.width);
@@ -101,7 +101,7 @@ fn test_rect_bounds() {
     assert_eq!(r.width, 51.0);
     assert_eq!(r.height, 61.0);
 
-    // Arrastar na direção oposta (de baixo-direita para cima-esquerda)
+    // Drag in reverse direction (bottom-right to top-left)
     let r2 = Rect::from_points(60.0, 80.0, 10.0, 20.0);
     assert_eq!(r2.x, 10.0);
     assert_eq!(r2.y, 20.0);
@@ -127,4 +127,15 @@ fn test_clipboard_formatting() {
 
     let text_v = format_measurement(RulerMode::Vertical, 50, 300, CopyFormat::Verbose);
     assert_eq!(text_v, "300 px");
+}
+
+#[test]
+fn test_cairo_surface_conversion() {
+    use edged::capture::rgba_to_cairo_surface;
+
+    let mut img = RgbaImage::new(10, 10);
+    img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+    let surface = rgba_to_cairo_surface(&img).expect("Should convert to Cairo surface");
+    assert_eq!(surface.width(), 10);
+    assert_eq!(surface.height(), 10);
 }

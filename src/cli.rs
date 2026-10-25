@@ -28,7 +28,7 @@ pub struct Cli {
     #[arg(long, conflicts_with_all = ["bounds", "spacing", "horizontal"])]
     pub vertical: bool,
 
-    /// Override edge detection initial tolerance percentage (1 to 100)
+    /// Override initial edge detection tolerance percentage (1 to 100)
     #[arg(short, long)]
     pub tolerance: Option<u8>,
 

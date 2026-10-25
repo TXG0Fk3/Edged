@@ -15,16 +15,16 @@ use std::sync::Arc;
 fn main() {
     let cli = Cli::parse();
 
-    // Carrega ou inicializa a configuração (~/.config/edged/config.toml)
+    // Load or initialize configuration (~/.config/edged/config.toml)
     let config = match Config::load_or_create(cli.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(err) => {
-            eprintln!("[edged] Erro ao carregar configuração: {}", err);
+            eprintln!("[edged] Error loading configuration: {}", err);
             std::process::exit(1);
         }
     };
 
-    // Determina o modo de operação (prioridade para flags CLI, fallback para config.toml)
+    // Determine operating mode (CLI flags take priority, fallback to config.toml)
     let mode = if cli.bounds {
         RulerMode::Bounds
     } else if cli.spacing {
@@ -47,39 +47,50 @@ fn main() {
         .unwrap_or(config.ruler.initial_tolerance)
         .clamp(1, 100);
 
-    // Captura da tela antes de abrir qualquer janela de overlay
+    // Capture screen before creating any overlay window
     let screen_image = match capture::capture_screen(&config) {
-        Ok(img) => Arc::new(img),
+        Ok(img) => img,
         Err(err) => {
-            eprintln!("[edged] Falha ao capturar a tela: {}", err);
+            eprintln!("[edged] Failed to capture screen: {}", err);
             eprintln!(
-                "[edged] Dica: Certifique-se de que o utilitário 'grim' (wlroots/Hyprland) ou o serviço xdg-desktop-portal esteja disponível."
+                "[edged] Hint: Ensure either 'grim' (for wlroots/Hyprland) or xdg-desktop-portal is installed and running."
             );
             std::process::exit(1);
         }
     };
 
-    let detector = Arc::new(EdgeDetector::new(screen_image));
+    // Convert captured frame to Cairo surface for rendering background
+    let cairo_surface = match capture::rgba_to_cairo_surface(&screen_image) {
+        Ok(s) => Arc::new(s),
+        Err(err) => {
+            eprintln!("[edged] Failed to create Cairo image surface: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    let detector = Arc::new(EdgeDetector::new(Arc::new(screen_image)));
     let config = Arc::new(config);
 
-    // Inicializa a aplicação GTK4 para desenhar o overlay Wayland
+    // Initialize GTK4 application for Wayland overlay
     let app = gtk4::Application::builder()
         .application_id("com.github.edged.screenruler")
         .build();
 
     let config_clone = config.clone();
     let detector_clone = detector.clone();
+    let surface_clone = cairo_surface.clone();
 
     app.connect_activate(move |application| {
         ui::create_and_show_overlay(
             application,
             config_clone.clone(),
             detector_clone.clone(),
+            surface_clone.clone(),
             mode,
             initial_tolerance,
         );
     });
 
-    // Executa a aplicação GTK sem repassar os argumentos da linha de comando
+    // Run GTK application without forwarding command-line arguments
     app.run_with_args::<&str>(&[]);
 }

@@ -17,6 +17,7 @@ impl Rect {
         }
     }
 
+    /// Constructs a normalized Rect from any two opposite corner points
     pub fn from_points(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
         let x = x1.min(x2);
         let y = y1.min(y2);
@@ -30,6 +31,7 @@ impl Rect {
         }
     }
 
+    /// Returns the center point (x, y) of the rectangle
     pub fn center(&self) -> (f64, f64) {
         (self.x + self.width / 2.0, self.y + self.height / 2.0)
     }
