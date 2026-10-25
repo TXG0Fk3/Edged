@@ -127,6 +127,7 @@ rm -rf "${APPDIR}"
 
 # 9. Checksums
 (cd dist && sha256sum * > SHA256SUMS.txt)
+chmod -R a+r dist
 
 echo "==> Build and packaging completed successfully!"
 ls -lh dist/
