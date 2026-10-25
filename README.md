@@ -26,8 +26,7 @@
 - [Installation](#-installation--prebuilt-packages)
   - [Prebuilt Packages](#1-prebuilt-packages-recommended)
   - [Nix & NixOS (Flake & Modules)](#2-nix--nixos-flake--modules)
-  - [Arch Linux (AUR)](#3-arch-linux-aur)
-  - [From Source (Cargo)](#4-from-source-cargo)
+  - [From Source (Cargo)](#3-from-source-cargo)
   - [Desktop Entry](#desktop-entry)
 - [CLI Reference](#-cli-reference)
 - [Compositor & Window Manager Setup](#-compositor--window-manager-setup)
@@ -238,15 +237,7 @@ Import the Home Manager module and configure your preferred defaults directly in
 
 ---
 
-### 3. Arch Linux (AUR)
-
-```bash
-paru -S edged-git
-# or
-yay -S edged-git
-```
-
-### 4. From Source (Cargo)
+### 3. From Source (Cargo)
 
 Ensure you have Rust 1.80 or later installed:
 
