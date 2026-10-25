@@ -173,3 +173,61 @@ fn test_cairo_surface_conversion() {
     assert_eq!(surface.width(), 10);
     assert_eq!(surface.height(), 10);
 }
+
+#[test]
+fn test_expand_command_placeholders() {
+    use edged::capture::expand_command_placeholders;
+    use std::path::Path;
+
+    let target = Path::new("/tmp/test_dir/capture_123.png");
+
+    // Standard %s
+    let cmd1 = expand_command_placeholders("grim %s", target);
+    assert_eq!(cmd1, "grim /tmp/test_dir/capture_123.png");
+
+    // %path alias
+    let cmd2 = expand_command_placeholders("wayshot %path", target);
+    assert_eq!(cmd2, "wayshot /tmp/test_dir/capture_123.png");
+
+    // Directory (%d) and filename (%n) for tools like hyprshot
+    let cmd3 = expand_command_placeholders("hyprshot -m output -s -o %d -f %n", target);
+    assert_eq!(
+        cmd3,
+        "hyprshot -m output -s -o /tmp/test_dir -f capture_123.png"
+    );
+
+    // Named %dir and %filename aliases
+    let cmd4 = expand_command_placeholders("custom --dir %dir --file %filename", target);
+    assert_eq!(
+        cmd4,
+        "custom --dir /tmp/test_dir --file capture_123.png"
+    );
+
+    // Fallback when no placeholders are present (appends target path)
+    let cmd5 = expand_command_placeholders("grim", target);
+    assert_eq!(cmd5, "grim /tmp/test_dir/capture_123.png");
+}
+
+#[test]
+fn test_find_newest_image_in_dir() {
+    use edged::capture::find_newest_image_in_dir;
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir().join(format!("edged_img_test_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).expect("Create temp dir");
+
+    let file1 = temp_dir.join("older.png");
+    let file2 = temp_dir.join("newer.png");
+    let non_img = temp_dir.join("log.txt");
+
+    fs::write(&file1, b"old").expect("write file1");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(&file2, b"new").expect("write file2");
+    fs::write(&non_img, b"not an image").expect("write non_img");
+
+    let newest = find_newest_image_in_dir(&temp_dir);
+    assert!(newest.is_some());
+    assert_eq!(newest.unwrap().file_name().unwrap(), "newer.png");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

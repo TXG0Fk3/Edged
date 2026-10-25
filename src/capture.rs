@@ -2,7 +2,7 @@ use crate::config::{CaptureMethod, Config};
 use ashpd::desktop::screenshot::Screenshot;
 use image::RgbaImage;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug)]
@@ -159,42 +159,151 @@ pub fn capture_via_portal() -> Result<RgbaImage, CaptureError> {
     Ok(img.to_rgba8())
 }
 
-/// Executes a custom screenshot capture command
-fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureError> {
-    let temp_path = std::env::temp_dir().join(format!("edged_custom_{}.png", std::process::id()));
-    let temp_str = temp_path.to_string_lossy().to_string();
+/// Expands placeholders in a custom capture command template
+pub fn expand_command_placeholders(cmd_template: &str, temp_path: &Path) -> String {
+    let temp_str = temp_path.to_string_lossy();
+    let temp_dir = temp_path
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "/tmp".to_string());
+    let temp_filename = temp_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "edged_capture.png".to_string());
 
-    let cmd_str = if cmd_template.contains("%s") {
-        cmd_template.replace("%s", &temp_str)
+    let mut cmd = cmd_template.to_string();
+
+    let has_any_placeholder = cmd.contains("%s")
+        || cmd.contains("%path")
+        || cmd.contains("%d")
+        || cmd.contains("%dir")
+        || cmd.contains("%n")
+        || cmd.contains("%filename");
+
+    if has_any_placeholder {
+        cmd = cmd
+            .replace("%path", &temp_str)
+            .replace("%s", &temp_str)
+            .replace("%dir", &temp_dir)
+            .replace("%d", &temp_dir)
+            .replace("%filename", &temp_filename)
+            .replace("%n", &temp_filename);
     } else {
-        format!("{} {}", cmd_template, temp_str)
-    };
+        // If no placeholder is present, append the target file path
+        cmd = format!("{} {}", cmd.trim(), temp_str);
+    }
 
-    let status = Command::new("sh")
+    cmd
+}
+
+/// Finds the newest image file inside a directory
+pub fn find_newest_image_in_dir(dir: &Path) -> Option<PathBuf> {
+    let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
+                    let ext_lower = ext.to_lowercase();
+                    if ext_lower == "png"
+                        || ext_lower == "jpg"
+                        || ext_lower == "jpeg"
+                        || ext_lower == "webp"
+                    {
+                        let mtime = entry
+                            .metadata()
+                            .and_then(|m| m.modified())
+                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                        candidates.push((p, mtime));
+                    }
+                }
+            }
+        }
+    }
+    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates.first().map(|(p, _)| p.clone())
+}
+
+/// Executes a custom screenshot capture command with resilient fallback handling
+fn capture_via_custom_command(cmd_template: &str) -> Result<RgbaImage, CaptureError> {
+    let temp_dir = std::env::temp_dir();
+    let temp_filename = format!("edged_custom_{}.png", std::process::id());
+    let temp_path = temp_dir.join(&temp_filename);
+
+    // Ensure clean state before running command
+    if temp_path.exists() {
+        if temp_path.is_dir() {
+            let _ = fs::remove_dir_all(&temp_path);
+        } else {
+            let _ = fs::remove_file(&temp_path);
+        }
+    }
+
+    let cmd_str = expand_command_placeholders(cmd_template, &temp_path);
+
+    let output = Command::new("sh")
         .arg("-c")
         .arg(&cmd_str)
-        .status()
-        .map_err(|e| CaptureError::CommandFailed(e.to_string()))?;
+        .output()
+        .map_err(|e| CaptureError::CommandFailed(format!("Failed to execute command: {}", e)))?;
 
-    if !status.success() {
-        let _ = fs::remove_file(&temp_path);
-        return Err(CaptureError::CommandFailed(format!(
-            "Command exited with status code: {:?}",
-            status.code()
-        )));
+    let stderr_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    // Look for the generated screenshot:
+    // 1. Direct file at temp_path
+    // 2. Or if a directory was created with the name temp_path (common when tools like hyprshot treat -o as folder),
+    //    find the newest image inside that directory
+    let (image_path, is_dir_cleanup) = if temp_path.is_file() {
+        (Some(temp_path.clone()), false)
+    } else if temp_path.is_dir() {
+        match find_newest_image_in_dir(&temp_path) {
+            Some(found) => (Some(found), true),
+            None => (None, true),
+        }
+    } else {
+        (None, false)
+    };
+
+    let result = match image_path {
+        Some(path) => {
+            if !output.status.success() {
+                eprintln!(
+                    "[edged] Note: Custom command exited with status {:?}, but a valid image was found. Proceeding. Details: {}",
+                    output.status.code(),
+                    stderr_msg
+                );
+            }
+            match image::open(&path) {
+                Ok(img) => Ok(img.to_rgba8()),
+                Err(err) => Err(CaptureError::ImageDecodeFailed(format!(
+                    "Failed to decode image at {:?}: {}",
+                    path, err
+                ))),
+            }
+        }
+        None => {
+            let error_details = if !stderr_msg.is_empty() {
+                format!("Stderr: {}", stderr_msg)
+            } else {
+                format!("Exit code: {:?}", output.status.code())
+            };
+            Err(CaptureError::CommandFailed(format!(
+                "Command did not generate an image at {:?}. {}",
+                temp_path, error_details
+            )))
+        }
+    };
+
+    // Clean up temporary file or directory
+    if temp_path.exists() {
+        if is_dir_cleanup || temp_path.is_dir() {
+            let _ = fs::remove_dir_all(&temp_path);
+        } else {
+            let _ = fs::remove_file(&temp_path);
+        }
     }
 
-    if !temp_path.exists() {
-        return Err(CaptureError::CommandFailed(
-            "Custom command did not produce the expected output file".to_string(),
-        ));
-    }
-
-    let img = image::open(&temp_path)
-        .map_err(|e| CaptureError::ImageDecodeFailed(e.to_string()))?;
-    let _ = fs::remove_file(&temp_path);
-
-    Ok(img.to_rgba8())
+    result
 }
 
 /// Converts an RgbaImage to a Cairo ImageSurface for hardware-accelerated rendering

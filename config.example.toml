@@ -1,27 +1,80 @@
 # ==============================================================================
 # Edged - Screen Ruler for Wayland (Hyprland, GNOME, Sway, River, etc.)
-# Example configuration: config.example.toml
-# Copy to: ~/.config/edged/config.toml
+# Configuration file: ~/.config/edged/config.toml
 # ==============================================================================
 
 [general]
 # Default mode when starting without arguments: "bounds", "spacing", "horizontal", "vertical"
 default_mode = "spacing"
 
-# Screen capture method: "auto", "grim", "portal", "command"
-# - "auto": Tries 'grim' first (instant on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
-# - "grim": Forces using the 'grim' utility
-# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
-# - "command": Executes a custom shell command specified below
-capture_method = "auto"
-
-# Custom shell command when capture_method = "command"
-# Use %s where the output temporary PNG path should be inserted.
-# Example: "wayshot --file %s"
-custom_capture_command = ""
-
 # Whether to close the application immediately after copying a measurement
 close_on_copy = true
+
+[capture]
+# Screen capture method: "auto", "grim", "portal", "custom"
+# - "auto": Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
+# - "grim": Forces using the 'grim' utility
+# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
+# - "custom": Executes the custom command specified below
+method = "auto"
+
+# Custom shell command when method = "custom"
+# Available path placeholders:
+#   %s or %path     Full temporary output file path (e.g. /tmp/edged_custom_1234.png)
+#   %d or %dir      Temporary directory (e.g. /tmp)
+#   %n or %filename Temporary output filename without directory (e.g. edged_custom_1234.png)
+#
+# Verified Examples:
+#   # Grim (standard Wayland / wlroots tool, takes output file directly):
+#   command = "grim %s"
+#
+#   # Hyprshot (Recommended: use --raw to write directly to stdout and redirect to %s):
+#   command = "hyprshot -m output -s --raw > %s"
+#
+#   # Hyprshot (Alternative using -o for folder and -f for filename):
+#   command = "hyprshot -m output -s -o %d -f %n"
+#
+#   # Wayshot (takes output file as positional argument, -o is for monitor name):
+#   command = "wayshot %s"
+#
+#   # Grimblast (Hyprland grim/slurp wrapper):
+#   command = "grimblast save screen %s"
+#
+#   # Spectacle (KDE: -b background non-interactive, -n no notify, -o output file):
+#   command = "spectacle -b -n -o %s"
+#
+#   # Grimshot (Sway grim/slurp wrapper):
+#   command = "grimshot save screen %s"
+#
+#   # Flameshot (fullscreen raw output redirected to %s):
+#   command = "flameshot full -r > %s"
+command = ""
+
+# Timeout in seconds for custom capture command execution
+timeout_seconds = 5
+
+[shortcuts]
+# Key to cycle through modes in order: "Tab" (or any key name like "grave", "space")
+# Tip: Shift + Tab will cycle in reverse!
+cycle_mode_key = "Tab"
+
+# Direct number keys to switch modes
+mode_bounds_key = "1"
+mode_spacing_key = "2"
+mode_horizontal_key = "3"
+mode_vertical_key = "4"
+
+# Alternative mnemonic letter keys to switch modes
+alt_mode_bounds_key = "b"
+alt_mode_spacing_key = "s"
+alt_mode_horizontal_key = "h"
+alt_mode_vertical_key = "v"
+
+# Allow Shift + Mouse Scroll to cycle through modes during runtime
+shift_scroll_cycles_mode = true
+
+# Allow Ctrl + Mouse Scroll to cycle through modes during runtime
+ctrl_scroll_cycles_mode = true
 
 [ruler]
 # Initial tolerance percentage for edge detection (1 to 100)

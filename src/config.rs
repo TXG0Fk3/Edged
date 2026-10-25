@@ -262,12 +262,35 @@ close_on_copy = true
 method = "auto"
 
 # Custom shell command when method = "custom"
-# Use %s where the output temporary PNG path will be passed.
-# Examples:
-#   command = "grim -t png %s"
-#   command = "wayshot -f %s"
-#   command = "hyprshot -m output -f %s"
+# Available path placeholders:
+#   %s or %path     Full temporary output file path (e.g. /tmp/edged_custom_1234.png)
+#   %d or %dir      Temporary directory (e.g. /tmp)
+#   %n or %filename Temporary output filename without directory (e.g. edged_custom_1234.png)
+#
+# Verified Examples:
+#   # Grim (standard Wayland / wlroots tool, takes output file directly):
+#   command = "grim %s"
+#
+#   # Hyprshot (Recommended: use --raw to write directly to stdout and redirect to %s):
+#   command = "hyprshot -m output -s --raw > %s"
+#
+#   # Hyprshot (Alternative using -o for folder and -f for filename):
+#   command = "hyprshot -m output -s -o %d -f %n"
+#
+#   # Wayshot (takes output file as positional argument, -o is for monitor name):
+#   command = "wayshot %s"
+#
+#   # Grimblast (Hyprland grim/slurp wrapper):
+#   command = "grimblast save screen %s"
+#
+#   # Spectacle (KDE: -b background non-interactive, -n no notify, -o output file):
 #   command = "spectacle -b -n -o %s"
+#
+#   # Grimshot (Sway grim/slurp wrapper):
+#   command = "grimshot save screen %s"
+#
+#   # Flameshot (fullscreen raw output redirected to %s):
+#   command = "flameshot full -r > %s"
 command = ""
 
 # Timeout in seconds for custom capture command execution
