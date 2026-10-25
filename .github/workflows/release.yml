@@ -3,9 +3,7 @@ name: Continuous Release
 on:
   push:
     branches:
-      - main
       - master
-      - egui-ui
   workflow_dispatch:
 
 permissions:
