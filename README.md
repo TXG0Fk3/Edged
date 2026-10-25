@@ -292,25 +292,27 @@ format = "compact"
 
 ### Prerequisites
 
+Because Edged uses the pure Rust **egui** immediate-mode GPU engine, it does **not** require any heavy C desktop libraries (no GTK4, no Cairo, no Pango, no libgtk4-layer-shell). Only standard Rust and a Wayland environment are required:
+
 #### Arch Linux
 ```bash
-sudo pacman -S rust cargo gtk4 gtk4-layer-shell cairo pango wl-clipboard
+sudo pacman -S rust cargo
 # Optional (recommended for Hyprland/Sway):
-sudo pacman -S grim
+sudo pacman -S grim wl-clipboard
 ```
 
 #### Fedora
 ```bash
-sudo dnf install rust cargo gtk4-devel gtk4-layer-shell-devel cairo-devel pango-devel wl-clipboard
+sudo dnf install rust cargo
 # Optional for wlroots compositors:
-sudo dnf install grim
+sudo dnf install grim wl-clipboard
 ```
 
-#### Ubuntu / Debian (23.04+)
+#### Ubuntu / Debian
 ```bash
-sudo apt install cargo libgtk-4-dev libgtk4-layer-shell-dev libcairo2-dev libpango1.0-dev wl-clipboard
+sudo apt install cargo
 # Optional:
-sudo apt install grim
+sudo apt install grim wl-clipboard
 ```
 
 ### Compiling Release Binary
