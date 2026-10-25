@@ -157,5 +157,5 @@ jobs:
           git add nix/sources.json
           if ! git diff --staged --quiet; then
             git commit -m "chore(nix): auto-update flake sources to ${VERSION} [skip ci]"
-            git push origin master
+            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:master
           fi
