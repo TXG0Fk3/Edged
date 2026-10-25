@@ -46,6 +46,7 @@ pub struct EdgedApp {
     mode_hud_until: Option<Instant>,
     shift_held: bool,
     ctrl_held: bool,
+    scroll_accumulator: f32,
 }
 
 impl EdgedApp {
@@ -72,6 +73,7 @@ impl EdgedApp {
             mode_hud_until: None,
             shift_held: false,
             ctrl_held: false,
+            scroll_accumulator: 0.0,
         }
     }
 }
@@ -84,11 +86,25 @@ impl eframe::App for EdgedApp {
         ctx.request_repaint();
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
 
-        let pixels_per_point = ctx.pixels_per_point();
-        let screen_rect = ui.max_rect();
-        let painter = ui.painter().clone();
+        let viewport_rect = ctx.viewport_rect();
+        let mut painter = ui.painter().clone();
+        painter.set_clip_rect(viewport_rect);
 
-        // 1. Draw freeze-frame desktop background
+        let img_w = self.screen_image.width() as f32;
+        let img_h = self.screen_image.height() as f32;
+
+        let scale_x = if viewport_rect.width() > 1.0 {
+            img_w / viewport_rect.width()
+        } else {
+            ctx.pixels_per_point()
+        };
+        let scale_y = if viewport_rect.height() > 1.0 {
+            img_h / viewport_rect.height()
+        } else {
+            ctx.pixels_per_point()
+        };
+
+        // 1. Draw freeze-frame desktop background perfectly covering the viewport
         let texture = self.texture.get_or_insert_with(|| {
             let size = [
                 self.screen_image.width() as usize,
@@ -100,14 +116,14 @@ impl eframe::App for EdgedApp {
 
         painter.image(
             texture.id(),
-            screen_rect,
+            viewport_rect,
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
         );
 
         if self.config.appearance.overlay_opacity > 0.0 {
             let dim_alpha = (self.config.appearance.overlay_opacity * 255.0).round() as u8;
-            painter.rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(dim_alpha));
+            painter.rect_filled(viewport_rect, 0.0, egui::Color32::from_black_alpha(dim_alpha));
         }
 
         // 2. Process modifiers and cursor position
@@ -173,14 +189,56 @@ impl eframe::App for EdgedApp {
             self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
         }
 
-        // 4. Mouse wheel scrolling (tolerance or mode cycle)
-        let scroll_y = ctx.input(|i| i.smooth_scroll_delta.y);
-        if scroll_y.abs() > 0.1 {
-            let cycles_mode = (self.shift_held && self.config.shortcuts.shift_scroll_cycles_mode)
-                || (self.ctrl_held && self.config.shortcuts.ctrl_scroll_cycles_mode);
+        // 4. Mouse wheel scrolling (discrete tolerance or mode cycle)
+        let mut wheel_events = Vec::new();
+        ctx.input(|i| {
+            for event in &i.events {
+                if let egui::Event::MouseWheel { unit, delta, modifiers, .. } = event {
+                    wheel_events.push((*unit, *delta, *modifiers));
+                }
+            }
+        });
+
+        for (unit, delta, modifiers) in wheel_events {
+            let is_shift = modifiers.shift || self.shift_held;
+            let is_ctrl = modifiers.ctrl || self.ctrl_held;
+
+            // When Shift is held, some compositors map vertical scroll to horizontal delta.x
+            let val = if delta.y.abs() >= delta.x.abs() {
+                delta.y
+            } else {
+                delta.x
+            };
+
+            if val.abs() < 0.001 {
+                continue;
+            }
+
+            let steps = match unit {
+                egui::MouseWheelUnit::Line | egui::MouseWheelUnit::Page => {
+                    val.signum() as i32
+                }
+                egui::MouseWheelUnit::Point => {
+                    self.scroll_accumulator += val;
+                    if self.scroll_accumulator.abs() >= 20.0 {
+                        let s = self.scroll_accumulator.signum() as i32;
+                        self.scroll_accumulator = 0.0;
+                        s
+                    } else {
+                        0
+                    }
+                }
+            };
+
+            if steps == 0 {
+                continue;
+            }
+
+            let cycles_mode = (is_shift && self.config.shortcuts.shift_scroll_cycles_mode)
+                || (is_ctrl && self.config.shortcuts.ctrl_scroll_cycles_mode);
 
             if cycles_mode {
-                if scroll_y > 0.0 {
+                if steps > 0 {
                     self.mode = self.mode.next();
                 } else {
                     self.mode = self.mode.prev();
@@ -188,8 +246,8 @@ impl eframe::App for EdgedApp {
                 self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
             } else if self.mode != RulerMode::Bounds {
                 let step = self.config.ruler.tolerance_step as i32;
-                let delta = if scroll_y > 0.0 { step } else { -step };
-                let new_tol = (self.tolerance as i32 + delta).clamp(1, 100) as u8;
+                let delta_tol = if steps > 0 { step } else { -step };
+                let new_tol = (self.tolerance as i32 + delta_tol).clamp(1, 100) as u8;
                 self.tolerance = new_tol;
                 self.tolerance_hud_until = Some(Instant::now() + Duration::from_millis(1200));
             }
@@ -197,8 +255,10 @@ impl eframe::App for EdgedApp {
 
         // 5. Update edge detection measurements
         if self.mode != RulerMode::Bounds {
-            let abs_x = (self.cursor.x * pixels_per_point).round() as u32;
-            let abs_y = (self.cursor.y * pixels_per_point).round() as u32;
+            let rel_x = self.cursor.x - viewport_rect.min.x;
+            let rel_y = self.cursor.y - viewport_rect.min.y;
+            let abs_x = (rel_x * scale_x).round().clamp(0.0, (img_w - 1.0).max(0.0)) as u32;
+            let abs_y = (rel_y * scale_y).round().clamp(0.0, (img_h - 1.0).max(0.0)) as u32;
             self.measurement = self.detector.detect_edges(abs_x, abs_y, self.tolerance);
         }
 
@@ -232,8 +292,8 @@ impl eframe::App for EdgedApp {
                     if self.shift_held && self.config.bounds.shift_pins_bounds {
                         self.pinned_rects.push(rect);
                     } else {
-                        let w_px = (rect.width * pixels_per_point as f64).round() as u32;
-                        let h_px = (rect.height * pixels_per_point as f64).round() as u32;
+                        let w_px = (rect.width as f32 * scale_x).round() as u32;
+                        let h_px = (rect.height as f32 * scale_y).round() as u32;
                         let text = format_measurement(
                             RulerMode::Bounds,
                             w_px,
@@ -275,7 +335,13 @@ impl eframe::App for EdgedApp {
             .filter(|&until| now < until)
             .map(|_| self.mode);
 
-        let renderer = EguiRenderer::new(&painter, self.config.clone(), pixels_per_point);
+        let renderer = EguiRenderer::new(
+            &painter,
+            self.config.clone(),
+            scale_x,
+            scale_y,
+            viewport_rect.min,
+        );
 
         if self.mode == RulerMode::Bounds {
             renderer.draw_bounds(

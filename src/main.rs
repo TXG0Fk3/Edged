@@ -82,10 +82,32 @@ fn main() {
     let detector = Arc::new(EdgeDetector::new(Arc::new(screen_image.clone())));
     let config = Arc::new(config);
 
+    let (target_w, target_h, target_x, target_y) = if let Some(ref target) = target_monitor {
+        let scale = if target.scale > 0.0 { target.scale } else { 1.0 };
+        (
+            target.width as f32 / scale as f32,
+            target.height as f32 / scale as f32,
+            target.x as f32 / scale as f32,
+            target.y as f32 / scale as f32,
+        )
+    } else {
+        (
+            screen_image.width() as f32,
+            screen_image.height() as f32,
+            0.0,
+            0.0,
+        )
+    };
+
+    apply_compositor_window_rules(target_monitor.as_ref());
+
     // Launch egui / eframe application
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
+            .with_app_id("edged")
             .with_title("Edged")
+            .with_inner_size([target_w, target_h])
+            .with_position([target_x, target_y])
             .with_decorations(false)
             .with_transparent(true)
             .with_fullscreen(true)
@@ -109,5 +131,41 @@ fn main() {
     ) {
         eprintln!("[edged] Error running egui application: {}", e);
         std::process::exit(1);
+    }
+}
+
+/// Dynamic window rules to ensure tiling compositors (Hyprland, Sway) properly frame fullscreen overlays
+fn apply_compositor_window_rules(target_monitor: Option<&monitor::MonitorInfo>) {
+    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() {
+        let mut rules = vec![
+            "float, class:^(edged)$".to_string(),
+            "fullscreen, class:^(edged)$".to_string(),
+            "noborder, class:^(edged)$".to_string(),
+            "noshadow, class:^(edged)$".to_string(),
+            "rounding 0, class:^(edged)$".to_string(),
+            "noanim, class:^(edged)$".to_string(),
+            "stayfocused, class:^(edged)$".to_string(),
+            "pin, class:^(edged)$".to_string(),
+            "move 0 0, class:^(edged)$".to_string(),
+            "float, initialClass:^(edged)$".to_string(),
+            "fullscreen, initialClass:^(edged)$".to_string(),
+        ];
+        if let Some(target) = target_monitor {
+            rules.push(format!("monitor {}, class:^(edged)$", target.name));
+        }
+        for rule in rules {
+            let _ = std::process::Command::new("hyprctl")
+                .args(["keyword", "windowrulev2", &rule])
+                .output();
+        }
+    } else if std::env::var_os("SWAYSOCK").is_some() {
+        let _ = std::process::Command::new("swaymsg")
+            .arg("for_window [app_id=\"edged\"] floating enable, fullscreen enable, border none")
+            .output();
+        if let Some(target) = target_monitor {
+            let _ = std::process::Command::new("swaymsg")
+                .arg(format!("for_window [app_id=\"edged\"] move to output {}", target.name))
+                .output();
+        }
     }
 }

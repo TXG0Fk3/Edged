@@ -17,15 +17,25 @@ pub fn to_egui_color(color_str: &str) -> Color32 {
 pub struct EguiRenderer<'a> {
     pub painter: &'a egui::Painter,
     pub config: Arc<Config>,
-    pub pixels_per_point: f32,
+    pub scale_x: f32,
+    pub scale_y: f32,
+    pub viewport_origin: Pos2,
 }
 
 impl<'a> EguiRenderer<'a> {
-    pub fn new(painter: &'a egui::Painter, config: Arc<Config>, pixels_per_point: f32) -> Self {
+    pub fn new(
+        painter: &'a egui::Painter,
+        config: Arc<Config>,
+        scale_x: f32,
+        scale_y: f32,
+        viewport_origin: Pos2,
+    ) -> Self {
         Self {
             painter,
             config,
-            pixels_per_point,
+            scale_x,
+            scale_y,
+            viewport_origin,
         }
     }
 
@@ -38,13 +48,12 @@ impl<'a> EguiRenderer<'a> {
         tolerance_hud: Option<u8>,
         mode_hud: Option<RulerMode>,
     ) {
-        let scale = self.pixels_per_point;
         let cx = cursor.x;
         let cy = cursor.y;
-        let left_x = measurement.left_x as f32 / scale;
-        let right_x = measurement.right_x as f32 / scale;
-        let top_y = measurement.top_y as f32 / scale;
-        let bottom_y = measurement.bottom_y as f32 / scale;
+        let left_x = self.viewport_origin.x + measurement.left_x as f32 / self.scale_x;
+        let right_x = self.viewport_origin.x + measurement.right_x as f32 / self.scale_x;
+        let top_y = self.viewport_origin.y + measurement.top_y as f32 / self.scale_y;
+        let bottom_y = self.viewport_origin.y + measurement.bottom_y as f32 / self.scale_y;
 
         let feet_size = self.config.ruler.feet_size as f32;
         let draw_feet = self.config.ruler.draw_feet;
@@ -171,16 +180,14 @@ impl<'a> EguiRenderer<'a> {
         let fill_color = to_egui_color(&self.config.appearance.bounds_fill_color);
         let shadow_color = to_egui_color(&self.config.appearance.line_shadow_color);
 
-        let scale = self.pixels_per_point;
-
         // Render previously pinned rectangles
         for r in pinned {
             let egui_r = EguiRect::from_min_size(Pos2::new(r.x as f32, r.y as f32), Vec2::new(r.width as f32, r.height as f32));
             self.painter.rect_filled(egui_r, 0.0, Color32::from_rgba_unmultiplied(fill_color.r(), fill_color.g(), fill_color.b(), (fill_color.a() as f32 * 0.7) as u8));
             self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness, border_color), StrokeKind::Middle);
 
-            let w_px = (r.width as f32 * scale).round() as u32;
-            let h_px = (r.height as f32 * scale).round() as u32;
+            let w_px = (r.width as f32 * self.scale_x).round() as u32;
+            let h_px = (r.height as f32 * self.scale_y).round() as u32;
             let label = self.format_dimensions(w_px, h_px);
             let (cx, cy) = r.center();
             self.draw_badge(Pos2::new(cx as f32, cy as f32), &label);
@@ -193,8 +200,8 @@ impl<'a> EguiRenderer<'a> {
             self.painter.rect_filled(egui_r, 0.0, fill_color);
             self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness, border_color), StrokeKind::Middle);
 
-            let w_px = (r.width as f32 * scale).round() as u32;
-            let h_px = (r.height as f32 * scale).round() as u32;
+            let w_px = (r.width as f32 * self.scale_x).round() as u32;
+            let h_px = (r.height as f32 * self.scale_y).round() as u32;
             let label = self.format_dimensions(w_px, h_px);
             let (cx, cy) = r.center();
             self.draw_badge(Pos2::new(cx as f32, cy as f32), &label);
