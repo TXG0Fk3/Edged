@@ -12,7 +12,7 @@
 
 > [!NOTE]
 > **Experimental Project / Vibecoding Notice**:
-> Edged is an experimental project **vibecoded with [Google Antigravity](https://deepmind.google/)** (an advanced agentic AI coding assistant) in collaboration with **TXG0Fk3**. It is an exploration into AI-assisted desktop tooling for Linux—rapidly prototyping, migrating, and optimizing a high-performance Wayland screen ruler in pure Rust and `egui`. While fully functional, actively tested, and maintained, it is transparently developed via AI pair-programming iterations rather than manual handcrafting.
+> Edged is an experimental project **vibecoded with [Google Antigravity](https://deepmind.google/)** (an advanced agentic AI coding assistant). It is an exploration into AI-assisted desktop tooling for Linux—rapidly prototyping, migrating, and optimizing a high-performance Wayland screen ruler in pure Rust and `egui`. While fully functional, actively tested, and maintained, it is transparently developed as a vibecoding experiment rather than manual handcrafting.
 
 **Edged** brings the intuitive, edge-aware measurement capabilities of Windows PowerToys Screen Ruler to modern Linux Wayland desktops. Whether you are fine-tuning UI component spacing, inspecting web layouts, auditing margins and padding, or dragging rectangular bounds across visual elements, Edged provides real-time measurement lines, dynamic contrast sensitivity, and instant clipboard export—with **zero persistent background daemons**, **zero GTK runtime dependencies**, and **zero screen flicker**.
 
