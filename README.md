@@ -654,21 +654,18 @@ On-screen badges will display both pixel dimensions and converted physical units
 
 ## 🧪 Testing
 
-Edged contains a comprehensive automated test suite. Run all unit and integration tests with:
+### Automated Unit & Integration Tests
+Edged includes an extensive automated test suite covering algorithm mathematics, geometric projections, color parsing, and configuration loading:
 
 ```bash
 cargo test
 ```
 
-Test coverage includes:
-- Mode cycling and bidirectional navigation logic.
-- Keyboard shortcut matching (Tab, single keys, named keys, case-insensitivity).
-- Multi-monitor target parsing and canvas cropping algorithms.
-- Custom capture command placeholder substitution.
-- Raymarching edge detection thresholds and synthetic box geometry.
-- Reverse drag normalization in Bounds mode.
-- Color parser verification (Hex 3/4/6/8-digit, RGB, RGBA).
-- Configuration parser integrity and default settings validity.
+### Manual QA & Hardware Test Plan
+For hardware-level interactions, Wayland compositor surface rules, screen capture pipelines, and fractional scaling validation that cannot be tested by unit tests, see the comprehensive test plan and checklist in [**`MANUAL_TESTING.md`**](MANUAL_TESTING.md).
+
+### AI & Developer Guidelines
+For architectural principles, business logic, release protocols, and vibecoding context for future developers or AI agents, refer to [**`AGENTS.md`**](AGENTS.md).
 
 ---
 
