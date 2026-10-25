@@ -56,38 +56,59 @@ pub fn capture_screen(
     };
 
     match method {
-        CaptureMethod::Grim => capture_via_grim(target_monitor),
-        CaptureMethod::Portal => capture_via_portal(),
+        CaptureMethod::Grim => {
+            log::info!("Capturing screen via Grim...");
+            capture_via_grim(target_monitor)
+        }
+        CaptureMethod::Portal => {
+            log::info!("Capturing screen via XDG Desktop Portal...");
+            capture_via_portal()
+        }
         CaptureMethod::Command | CaptureMethod::Custom => {
             if custom_cmd.is_empty() {
                 Err(CaptureError::CommandFailed(
                     "Custom capture command is empty. Configure 'command' in [capture] section.".to_string(),
                 ))
             } else {
+                log::info!("Capturing screen via custom command: '{}'", custom_cmd);
                 capture_via_custom_command(custom_cmd, target_monitor)
             }
         }
         CaptureMethod::Auto => {
             // If custom command is set, prioritize it
             if !custom_cmd.is_empty() {
+                log::info!("Auto-capture: using configured custom command: '{}'", custom_cmd);
                 return capture_via_custom_command(custom_cmd, target_monitor);
             }
 
             // Try 'grim' first (instant on wlroots/Hyprland/Sway)
+            log::debug!("Auto-capture: testing Grim...");
             match capture_via_grim(target_monitor) {
-                Ok(img) => Ok(img),
+                Ok(img) => {
+                    log::info!("Auto-capture: successfully captured via Grim");
+                    Ok(img)
+                }
                 Err(grim_err) => {
+                    log::debug!("Auto-capture: Grim unavailable ({}), checking alternatives...", grim_err);
+
                     // On Hyprland, try hyprshot before falling back to portal
                     if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() {
+                        log::debug!("Auto-capture: Hyprland detected, attempting hyprshot...");
                         if let Ok(img) = capture_via_hyprshot(target_monitor) {
+                            log::info!("Auto-capture: successfully captured via hyprshot");
                             return Ok(img);
                         }
                     }
 
                     // Fall back to xdg-desktop-portal (GNOME, KDE Plasma, etc.)
+                    log::info!("Auto-capture: falling back to XDG Desktop Portal...");
                     match capture_via_portal() {
-                        Ok(img) => Ok(img),
+                        Ok(img) => {
+                            log::info!("Auto-capture: successfully captured via Desktop Portal");
+                            Ok(img)
+                        }
                         Err(portal_err) => {
+                            log::error!("All capture methods failed. Grim: {}, Portal: {}", grim_err, portal_err);
                             eprintln!("[edged] Grim: {}", grim_err);
                             eprintln!("[edged] Portal: {}", portal_err);
                             Err(CaptureError::AllMethodsFailed)

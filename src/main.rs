@@ -2,6 +2,7 @@ mod capture;
 mod cli;
 mod clipboard;
 mod config;
+mod logger;
 mod monitor;
 mod ruler;
 mod ui;
@@ -16,12 +17,53 @@ use std::sync::Arc;
 fn main() {
     let cli = Cli::parse();
 
-    // Load or initialize configuration (~/.config/edged/config.toml)
+    // 1. Handle standalone CLI diagnostic commands
+    if cli.log_dir {
+        println!("{}", logger::get_log_dir().display());
+        return;
+    }
+
+    if cli.view_logs {
+        if let Some(latest) = logger::get_latest_log_path() {
+            match std::fs::read_to_string(&latest) {
+                Ok(content) => print!("{}", content),
+                Err(err) => eprintln!("[edged] Error reading {:?}: {}", latest, err),
+            }
+        } else {
+            println!("No log files found in {}", logger::get_log_dir().display());
+        }
+        return;
+    }
+
+    if cli.clear_logs {
+        let dir = logger::get_log_dir();
+        match logger::clear_all_logs(&dir) {
+            Ok(count) => println!("Successfully purged {} log file(s) from {}", count, dir.display()),
+            Err(err) => eprintln!("[edged] Error clearing logs from {}: {}", dir.display(), err),
+        }
+        return;
+    }
+
+    // 2. Load or initialize configuration (~/.config/edged/config.toml)
     let mut config = match Config::load_or_create(cli.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("[edged] Error loading configuration: {}", err);
             std::process::exit(1);
+        }
+    };
+
+    // 3. Initialize logging subsystem (pruning logs older than 4 days automatically)
+    let log_init = match logger::init(&config.logging, cli.log_level.as_deref()) {
+        Ok(res) => res,
+        Err(err) => {
+            eprintln!("[edged] Warning: Logger initialization failed: {}", err);
+            logger::LogInitResult {
+                log_dir: logger::get_log_dir(),
+                log_file: std::path::PathBuf::new(),
+                files_pruned: 0,
+                bytes_freed: 0,
+            }
         }
     };
 
@@ -32,6 +74,10 @@ fn main() {
 
     let all_monitors = monitor::get_all_monitors();
     let target_monitor = monitor::resolve_target_monitor(&config.monitor.target, &all_monitors).cloned();
+
+    // 4. Output rich system diagnostics to log
+    logger::log_system_diagnostics(&log_init, target_monitor.as_ref());
+    log::debug!("Configuration loaded successfully");
 
     // Determine operating mode (CLI flags take priority, fallback to config.toml)
     let mode = if cli.bounds {
@@ -56,10 +102,30 @@ fn main() {
         .unwrap_or(config.ruler.initial_tolerance)
         .clamp(1, 100);
 
+    log::info!(
+        "Requested Mode: {:?}, Initial Contrast Tolerance: {}%",
+        mode,
+        initial_tolerance
+    );
+
     // Capture screen before creating any overlay window
+    log::info!("Initiating screen capture (method: {:?})...", config.general.capture_method);
+    let start_capture = std::time::Instant::now();
     let raw_image = match capture::capture_screen(&config, target_monitor.as_ref()) {
-        Ok(img) => img,
+        Ok(img) => {
+            log::info!(
+                "Screen capture finished in {:.1} ms (raw: {}x{} px)",
+                start_capture.elapsed().as_secs_f64() * 1000.0,
+                img.width(),
+                img.height()
+            );
+            img
+        }
         Err(err) => {
+            log::error!("Failed to capture screen: {}", err);
+            log::warn!(
+                "Hint: Ensure either 'grim' (for wlroots/Hyprland) or xdg-desktop-portal is installed and running."
+            );
             eprintln!("[edged] Failed to capture screen: {}", err);
             eprintln!(
                 "[edged] Hint: Ensure either 'grim' (for wlroots/Hyprland) or xdg-desktop-portal is installed and running."
@@ -71,6 +137,7 @@ fn main() {
     // If targeting a single monitor, crop multi-monitor screenshots to target geometry
     let screen_image = if let Some(ref target) = target_monitor {
         if config.monitor.crop_to_monitor {
+            log::debug!("Cropping screenshot to target monitor bounds: {}", target.name);
             monitor::crop_image_if_needed(raw_image, target, &all_monitors, true)
         } else {
             raw_image
@@ -78,6 +145,12 @@ fn main() {
     } else {
         raw_image
     };
+
+    log::info!(
+        "Active measurement canvas prepared: {}x{} px",
+        screen_image.width(),
+        screen_image.height()
+    );
 
     let detector = Arc::new(EdgeDetector::new(Arc::new(screen_image.clone())));
     let config = Arc::new(config);
@@ -99,6 +172,10 @@ fn main() {
         )
     };
 
+    log::debug!(
+        "Applying compositor window rules (viewport: {}x{} at {},{})",
+        target_w, target_h, target_x, target_y
+    );
     apply_compositor_window_rules(target_monitor.as_ref());
 
     // Launch egui / eframe application
@@ -124,11 +201,13 @@ fn main() {
         initial_tolerance,
     );
 
+    log::info!("Launching egui overlay interface...");
     if let Err(e) = eframe::run_native(
         "Edged",
         native_options,
         Box::new(|_cc| Ok(Box::new(app))),
     ) {
+        log::error!("Error running egui application: {}", e);
         eprintln!("[edged] Error running egui application: {}", e);
         std::process::exit(1);
     }

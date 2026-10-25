@@ -39,4 +39,20 @@ pub struct Cli {
     /// Path to a custom configuration file
     #[arg(short, long)]
     pub config: Option<PathBuf>,
+
+    /// Override log level threshold: 'trace', 'debug', 'info', 'warn', 'error'
+    #[arg(long, value_name = "LEVEL")]
+    pub log_level: Option<String>,
+
+    /// Print the active log directory path and exit
+    #[arg(long)]
+    pub log_dir: bool,
+
+    /// Print the contents of the latest log file to stdout and exit
+    #[arg(long)]
+    pub view_logs: bool,
+
+    /// Clear all stored Edged log files and exit
+    #[arg(long)]
+    pub clear_logs: bool,
 }

@@ -49,6 +49,7 @@
   - [Visual Appearance (`[appearance]`)](#visual-appearance-appearance)
   - [Measurement Units (`[units]`)](#measurement-units-units)
   - [Clipboard Export Formats (`[clipboard]`)](#clipboard-export-formats-clipboard)
+  - [Logging & Diagnostics (`[logging]`)](#logging--diagnostics-logging)
 - [Architecture & Design Principles](#-architecture--design-principles)
 - [Troubleshooting & FAQ](#-troubleshooting--faq)
 - [Testing](#-testing)
@@ -204,6 +205,10 @@ Options:
   -t, --tolerance <PERCENT>  Override initial edge detection tolerance (1 to 100)
   -m, --monitor <TARGET>     Target monitor: 'focused' (default), 'all', 'primary', or connector ('DP-1')
   -c, --config <PATH>        Path to a custom configuration file
+      --log-level <LEVEL>    Override log level threshold: 'trace', 'debug', 'info', 'warn', 'error'
+      --log-dir              Print the active log directory path and exit
+      --view-logs            Print the contents of the latest log file to stdout and exit
+      --clear-logs           Clear all stored Edged log files and exit
   -h, --help                 Print help information
   -V, --version              Print version
 ```
@@ -225,6 +230,18 @@ edged --monitor HDMI-A-1
 
 # Span overlay across all attached monitors
 edged --monitor all
+
+# Inspect the active log directory path
+edged --log-dir
+
+# View the latest session logs in the terminal
+edged --view-logs
+
+# Launch with verbose debug tracing enabled
+edged --log-level debug
+
+# Purge all stored log files immediately
+edged --clear-logs
 ```
 
 ---
@@ -518,6 +535,35 @@ screen_dpi = 96.0
 # - "verbose": e.g. "1920 × 1080 px" or "120 px"
 # - "css":     e.g. "width: 1920px; height: 1080px;" or "width: 120px;"
 format = "compact"
+```
+
+---
+
+### Logging & Diagnostics (`[logging]`)
+
+Edged features a high-performance, non-blocking structured logging system that writes clean logs simultaneously to standard error and rotating daily files under `~/.local/state/edged/logs/` (with a `latest.log` symlink).
+
+> [!TIP]
+> **Automatic 4-Day Pruning**: To preserve disk space and maintain clean storage, Edged automatically purges all log files older than **4 days** on every startup.
+
+```toml
+[logging]
+# Enable logging system (writes to console and persistent daily log files)
+enabled = true
+
+# Logging level threshold:
+# Options: "error", "warn", "info", "debug", "trace"
+level = "info"
+
+# Maximum log retention in days.
+# Log files older than this limit are automatically pruned on startup (default: 4 days).
+retention_days = 4
+
+# Output logs to standard error / terminal
+log_to_console = true
+
+# Output logs to daily files in ~/.local/state/edged/logs/ (edged-YYYY-MM-DD.log)
+log_to_file = true
 ```
 
 ---

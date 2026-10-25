@@ -22,6 +22,11 @@ fn test_default_config_validity() {
     assert!(cfg.shortcuts.ctrl_scroll_cycles_mode);
     assert_eq!(cfg.monitor.target, MonitorTarget::Focused);
     assert!(cfg.monitor.crop_to_monitor);
+    assert!(cfg.logging.enabled);
+    assert_eq!(cfg.logging.retention_days, 4);
+    assert_eq!(cfg.logging.level, "info");
+    assert!(cfg.logging.log_to_console);
+    assert!(cfg.logging.log_to_file);
 }
 
 #[test]
@@ -329,6 +334,40 @@ fn test_find_newest_image_in_dir() {
     let newest = find_newest_image_in_dir(&temp_dir);
     assert!(newest.is_some());
     assert_eq!(newest.unwrap().file_name().unwrap(), "newer.png");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_log_retention_prune_four_days() {
+    use edged::logger::prune_old_logs;
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir().join(format!("edged_log_prune_test_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).expect("Create temp dir");
+
+    // Create log files with different date signatures
+    let expired_log1 = temp_dir.join("edged-2020-01-01.log"); // Over 6 years old
+    let expired_log2 = temp_dir.join("edged-2026-05-10.log"); // Months old
+    let recent_log = temp_dir.join("edged-2026-10-25.log");  // Today
+    let latest_symlink = temp_dir.join("latest.log");
+    let non_log = temp_dir.join("keepme.txt");
+
+    fs::write(&expired_log1, b"old log 1").expect("write expired1");
+    fs::write(&expired_log2, b"old log 2").expect("write expired2");
+    fs::write(&recent_log, b"today log").expect("write recent");
+    fs::write(&latest_symlink, b"pointer to latest").expect("write latest");
+    fs::write(&non_log, b"important notes").expect("write non_log");
+
+    // Retention is strictly 4 days
+    let (pruned_count, _) = prune_old_logs(&temp_dir, 4);
+
+    assert_eq!(pruned_count, 2, "Expected 2 expired log files to be pruned");
+    assert!(!expired_log1.exists(), "expired_log1 should be deleted");
+    assert!(!expired_log2.exists(), "expired_log2 should be deleted");
+    assert!(recent_log.exists(), "recent_log must be preserved");
+    assert!(latest_symlink.exists(), "latest.log must not be deleted by retention pruning");
+    assert!(non_log.exists(), "non_log file must not be touched");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

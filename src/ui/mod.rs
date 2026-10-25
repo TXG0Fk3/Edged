@@ -243,12 +243,14 @@ impl eframe::App for EdgedApp {
                 } else {
                     self.mode = self.mode.prev();
                 }
+                log::info!("Switched ruler mode to: {:?}", self.mode);
                 self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
             } else if self.mode != RulerMode::Bounds {
                 let step = self.config.ruler.tolerance_step as i32;
                 let delta_tol = if steps > 0 { step } else { -step };
                 let new_tol = (self.tolerance as i32 + delta_tol).clamp(1, 100) as u8;
                 self.tolerance = new_tol;
+                log::debug!("Tolerance adjusted via scroll: {}%", self.tolerance);
                 self.tolerance_hud_until = Some(Instant::now() + Duration::from_millis(1200));
             }
         }
@@ -290,6 +292,7 @@ impl eframe::App for EdgedApp {
             if primary_released {
                 if let Some(rect) = self.active_rect.take() {
                     if self.shift_held && self.config.bounds.shift_pins_bounds {
+                        log::info!("Pinned rectangular bounds: {}x{} px", rect.width, rect.height);
                         self.pinned_rects.push(rect);
                     } else {
                         let w_px = (rect.width as f32 * scale_x).round() as u32;
@@ -300,8 +303,10 @@ impl eframe::App for EdgedApp {
                             h_px,
                             self.config.clipboard.format,
                         );
+                        log::info!("Copied bounds measurement to clipboard: '{}'", text);
                         copy_to_clipboard(&text);
                         if self.config.general.close_on_copy {
+                            log::debug!("Closing on copy (close_on_copy = true)");
                             close_requested = true;
                         }
                     }
@@ -317,8 +322,10 @@ impl eframe::App for EdgedApp {
                     self.measurement.height,
                     self.config.clipboard.format,
                 );
+                log::info!("Copied measurement to clipboard: '{}' (mode: {:?})", text, self.mode);
                 copy_to_clipboard(&text);
                 if self.config.general.close_on_copy {
+                    log::debug!("Closing on copy (close_on_copy = true)");
                     close_requested = true;
                 }
             }

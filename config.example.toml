@@ -171,3 +171,23 @@ screen_dpi = 96.0
 #   - "verbose": e.g. "1920 × 1080 px" or "120 px"
 #   - "css":     e.g. "width: 1920px; height: 1080px;" or "width: 120px;"
 format = "compact"
+
+[logging]
+# Enable the logging system (writes to console and persistent daily log files)
+enabled = true
+
+# Logging level threshold:
+# Options: "error", "warn", "info", "debug", "trace"
+# (Use "debug" or "trace" when diagnosing Wayland or screenshot portal issues)
+level = "info"
+
+# Maximum log retention in days.
+# Log files older than this limit are automatically pruned on startup (default: 4 days).
+retention_days = 4
+
+# Output logs to standard error / terminal
+log_to_console = true
+
+# Output logs to daily files in ~/.local/state/edged/logs/ (edged-YYYY-MM-DD.log)
+log_to_file = true
+

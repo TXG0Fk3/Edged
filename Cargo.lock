@@ -582,6 +582,8 @@ dependencies = [
  "eframe",
  "egui",
  "image",
+ "libc",
+ "log",
  "serde",
  "serde_json",
  "tokio",

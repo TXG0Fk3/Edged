@@ -223,6 +223,44 @@ impl Default for ClipboardConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_log_level")]
+    pub level: String,
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
+    #[serde(default = "default_true")]
+    pub log_to_console: bool,
+    #[serde(default = "default_true")]
+    pub log_to_file: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
+fn default_retention_days() -> u32 {
+    4
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            level: "info".to_string(),
+            retention_days: 4,
+            log_to_console: true,
+            log_to_file: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
     #[serde(default)]
     pub target: MonitorTarget,
@@ -263,6 +301,8 @@ pub struct Config {
     pub units: UnitsConfig,
     #[serde(default)]
     pub clipboard: ClipboardConfig,
+    #[serde(default)]
+    pub logging: LoggingConfig,
 }
 
 pub const DEFAULT_CONFIG_COMMENTED: &str = r##"# ==============================================================================
@@ -438,6 +478,24 @@ screen_dpi = 96.0
 #   - "verbose": e.g. "1920 × 1080 px" or "120 px"
 #   - "css":     e.g. "width: 1920px; height: 1080px;" or "width: 120px;"
 format = "compact"
+
+[logging]
+# Enable the logging system (writes to console and persistent daily log files)
+enabled = true
+
+# Logging level threshold:
+# Options: "error", "warn", "info", "debug", "trace"
+level = "info"
+
+# Maximum log retention in days.
+# Log files older than this limit are automatically pruned on startup (default: 4 days).
+retention_days = 4
+
+# Output logs to standard error / terminal
+log_to_console = true
+
+# Output logs to daily files in ~/.local/state/edged/logs/ (edged-YYYY-MM-DD.log)
+log_to_file = true
 "##;
 
 impl Config {
