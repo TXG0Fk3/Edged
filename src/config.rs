@@ -326,11 +326,8 @@ method = "auto"
 #   # Grim targeting specific monitor connector:
 #   command = "grim -o %o %s"
 #
-#   # Hyprshot (Recommended: use --raw to write directly to stdout and redirect to %s):
+#   # Hyprshot (takes raw screenshot of active output and redirects bytes to %s):
 #   command = "hyprshot -m output -s --raw > %s"
-#
-#   # Hyprshot (Alternative using -o for folder and -f for filename):
-#   command = "hyprshot -m output -s -o %d -f %n"
 #
 #   # Wayshot (takes output file as positional argument, -o is for monitor name):
 #   command = "wayshot %s"

@@ -5,6 +5,38 @@ edition = "2021"
 authors = ["Edged Contributors"]
 description = "High-quality PowerToys Screen Ruler replica natively built for Wayland (Hyprland, GNOME, Sway)"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/txg0fk3/Edged"
+homepage = "https://github.com/txg0fk3/Edged"
+readme = "README.md"
+keywords = ["wayland", "screen-ruler", "hyprland", "egui", "powertoys"]
+categories = ["command-line-utilities", "development-tools", "graphics"]
+
+[package.metadata.deb]
+maintainer = "Edged Contributors <https://github.com/txg0fk3/Edged>"
+copyright = "2026 Edged Contributors"
+license-file = ["LICENSE", "4"]
+depends = "$auto"
+recommends = "grim, wl-clipboard"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/edged", "usr/bin/edged", "755"],
+    ["edged.desktop", "usr/share/applications/edged.desktop", "644"],
+    ["assets/edged.png", "usr/share/icons/hicolor/256x256/apps/edged.png", "644"],
+    ["assets/edged.svg", "usr/share/icons/hicolor/scalable/apps/edged.svg", "644"],
+    ["config.example.toml", "usr/share/doc/edged/config.example.toml", "644"],
+    ["README.md", "usr/share/doc/edged/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/edged", dest = "/usr/bin/edged", mode = "755" },
+    { source = "edged.desktop", dest = "/usr/share/applications/edged.desktop", mode = "644" },
+    { source = "assets/edged.png", dest = "/usr/share/icons/hicolor/256x256/apps/edged.png", mode = "644" },
+    { source = "assets/edged.svg", dest = "/usr/share/icons/hicolor/scalable/apps/edged.svg", mode = "644" },
+    { source = "config.example.toml", dest = "/usr/share/doc/edged/config.example.toml", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/edged/README.md", mode = "644" },
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }

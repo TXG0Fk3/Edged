@@ -1,0 +1,224 @@
+name: Continuous Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - egui-ui
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Package Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Install Packaging Utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd libarchive-tools desktop-file-utils file libfuse2 curl wget
+
+          # Install cargo-deb prebuilt binary
+          DEB_TOOL_URL="https://github.com/kornelski/cargo-deb/releases/download/v2.11.1/cargo-deb_2.11.1_amd64.deb"
+          curl -sSL -o /tmp/cargo-deb.deb "${DEB_TOOL_URL}" && sudo dpkg -i /tmp/cargo-deb.deb
+
+          # Install cargo-generate-rpm prebuilt binary
+          RPM_TOOL_URL="https://github.com/cat-in-136/cargo-generate-rpm/releases/download/v0.15.0/cargo-generate-rpm-v0.15.0-x86_64-unknown-linux-musl.tar.gz"
+          mkdir -p ~/.cargo/bin
+          curl -sSL "${RPM_TOOL_URL}" | tar -xz -C ~/.cargo/bin
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+          # Download official appimagetool
+          wget -q -O /usr/local/bin/appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Compute Date-Based Version
+        id: versioning
+        run: |
+          DATE=$(date -u +'%Y.%m.%d')
+          git fetch --tags --force || true
+
+          # Find highest build counter for today
+          HIGHEST_NUM=0
+          for tag in $(git tag -l "v${DATE}.*"); do
+            NUM="${tag##*.}"
+            if [[ "$NUM" =~ ^[0-9]+$ ]]; then
+              if (( NUM > HIGHEST_NUM )); then
+                HIGHEST_NUM=$NUM
+              fi
+            fi
+          done
+
+          NEXT_NUM=$((HIGHEST_NUM + 1))
+          VERSION="v${DATE}.${NEXT_NUM}"
+          CLEAN_VERSION="${DATE}.${NEXT_NUM}"
+
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "CLEAN_VERSION=${CLEAN_VERSION}" >> $GITHUB_ENV
+          echo "Release Version: ${VERSION}"
+
+          # Update Cargo.toml version string for consistent packaging
+          sed -i "s/^version = \".*\"/version = \"${CLEAN_VERSION}\"/" Cargo.toml
+
+      - name: Run Test Suite
+        run: cargo test --release
+
+      - name: Compile Release Binary
+        run: |
+          cargo build --release --locked
+          strip target/release/edged
+
+      - name: Package Distro Releases
+        run: |
+          mkdir -p dist
+
+          # 1. Standalone Executable (Ready to chmod +x and run)
+          cp target/release/edged dist/edged
+          cp target/release/edged dist/edged-standalone-x86_64
+
+          # 2. Linux Tarball (.tar.gz with installer)
+          TAR_DIR="edged-${VERSION}-x86_64"
+          mkdir -p "${TAR_DIR}/assets"
+          cp target/release/edged "${TAR_DIR}/"
+          cp install.sh "${TAR_DIR}/"
+          cp edged.desktop "${TAR_DIR}/"
+          cp config.example.toml "${TAR_DIR}/"
+          cp README.md "${TAR_DIR}/"
+          cp LICENSE "${TAR_DIR}/"
+          cp assets/* "${TAR_DIR}/assets/"
+          tar -czvf "dist/edged-${VERSION}-x86_64-linux.tar.gz" "${TAR_DIR}"
+          rm -rf "${TAR_DIR}"
+
+          # 3. Debian / Ubuntu Package (.deb)
+          cargo deb --no-build
+          cp target/debian/*.deb "dist/edged_${CLEAN_VERSION}_amd64.deb"
+
+          # 4. Fedora / RHEL Package (.rpm)
+          cargo generate-rpm
+          cp target/generate-rpm/*.rpm "dist/edged-${CLEAN_VERSION}-1.x86_64.rpm"
+
+          # 5. Arch Linux Package (.pkg.tar.zst)
+          ARCH_DIR="arch_pkg"
+          mkdir -p "${ARCH_DIR}/usr/bin" \
+                   "${ARCH_DIR}/usr/share/applications" \
+                   "${ARCH_DIR}/usr/share/icons/hicolor/256x256/apps" \
+                   "${ARCH_DIR}/usr/share/icons/hicolor/scalable/apps" \
+                   "${ARCH_DIR}/usr/share/doc/edged"
+          cp target/release/edged "${ARCH_DIR}/usr/bin/"
+          cp edged.desktop "${ARCH_DIR}/usr/share/applications/"
+          cp assets/edged.png "${ARCH_DIR}/usr/share/icons/hicolor/256x256/apps/edged.png"
+          cp assets/edged.svg "${ARCH_DIR}/usr/share/icons/hicolor/scalable/apps/edged.svg"
+          cp config.example.toml "${ARCH_DIR}/usr/share/doc/edged/"
+          cp README.md "${ARCH_DIR}/usr/share/doc/edged/"
+
+          cat << 'EOF' > "${ARCH_DIR}/.PKGINFO"
+          pkgname = edged
+          pkgbase = edged
+          pkgver = ${{ env.CLEAN_VERSION }}-1
+          pkgdesc = High-quality PowerToys Screen Ruler replica for Wayland
+          url = https://github.com/txg0fk3/Edged
+          builddate = $(date +%s)
+          packager = Edged CI <https://github.com/txg0fk3/Edged>
+          size = $(du -sb "${ARCH_DIR}" | awk '{print $1}')
+          arch = x86_64
+          license = MIT
+          license = Apache-2.0
+          depend = glibc
+          optdepend = grim: Wayland screencopy screenshot utility
+          optdepend = hyprshot: Hyprland screenshot utility
+          optdepend = wl-clipboard: Wayland clipboard support
+          EOF
+
+          (cd "${ARCH_DIR}" && bsdtar --uid 0 --gid 0 -cf - .PKGINFO usr | zstd -c -T0 -19 > "../dist/edged-${CLEAN_VERSION}-1-x86_64.pkg.tar.zst")
+          rm -rf "${ARCH_DIR}"
+
+          # 6. Universal AppImage (.AppImage)
+          APPDIR="AppDir"
+          mkdir -p "${APPDIR}/usr/bin" \
+                   "${APPDIR}/usr/share/applications" \
+                   "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
+          cp target/release/edged "${APPDIR}/usr/bin/"
+          cp edged.desktop "${APPDIR}/"
+          cp edged.desktop "${APPDIR}/usr/share/applications/"
+          cp assets/edged.png "${APPDIR}/"
+          cp assets/edged.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/edged.png"
+
+          # AppRun script for AppImage entrypoint
+          cat << 'EOF' > "${APPDIR}/AppRun"
+          #!/usr/bin/env sh
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          exec "${HERE}/usr/bin/edged" "$@"
+          EOF
+          chmod +x "${APPDIR}/AppRun"
+
+          ARCH=x86_64 appimagetool --appimage-extract-and-run "${APPDIR}" "dist/edged-${VERSION}-x86_64.AppImage"
+          rm -rf "${APPDIR}"
+
+          # 7. Checksums
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+
+      - name: Tag Git Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION}" -m "Automated release ${VERSION}"
+          git push origin "${VERSION}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Edged ${{ env.VERSION }}
+          body: |
+            ## Edged ${{ env.VERSION }} 📐
+
+            Automated release generated on push to `${{ github.ref_name }}`.
+
+            ### 📦 Available Packages & Formats
+
+            | Distribution / Format | File | Installation Command |
+            | :--- | :--- | :--- |
+            | **Standalone Binary** | [`edged`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged) | `chmod +x edged && ./edged` |
+            | **Debian / Ubuntu / Mint** | [`edged_${{ env.CLEAN_VERSION }}_amd64.deb`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged_${{ env.CLEAN_VERSION }}_amd64.deb) | `sudo apt install ./edged_*.deb` |
+            | **Fedora / RHEL / openSUSE** | [`edged-${{ env.CLEAN_VERSION }}-1.x86_64.rpm`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.CLEAN_VERSION }}-1.x86_64.rpm) | `sudo dnf install ./edged-*.rpm` |
+            | **Arch Linux / Manjaro** | [`edged-${{ env.CLEAN_VERSION }}-1-x86_64.pkg.tar.zst`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.CLEAN_VERSION }}-1-x86_64.pkg.tar.zst) | `sudo pacman -U edged-*.pkg.tar.zst` |
+            | **Universal AppImage** | [`edged-${{ env.VERSION }}-x86_64.AppImage`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.VERSION }}-x86_64.AppImage) | `chmod +x edged-*.AppImage && ./edged-*.AppImage` |
+            | **Tarball Archive** | [`edged-${{ env.VERSION }}-x86_64-linux.tar.gz`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.VERSION }}-x86_64-linux.tar.gz) | `tar -xzf edged-*.tar.gz && cd edged-* && sudo ./install.sh` |
+
+            ### 🔐 Checksums & Verification
+            Verify downloads using the provided `SHA256SUMS.txt`:
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: dist/*
+          draft: false
+          prerelease: false

@@ -133,11 +133,24 @@ Measures vertical distance exclusively. A single vertical line expands upwards a
 
 ---
 
-## 📦 Installation
+## 📦 Installation & Prebuilt Packages
 
-### Arch Linux
+Every push to the repository automatically triggers automated builds creating packages for all major Linux distributions on the [**GitHub Releases**](https://github.com/txg0fk3/Edged/releases) page.
 
-Install from the AUR (using `paru` or `yay`):
+### 1. Prebuilt Packages (Recommended)
+
+| Format / Distro | Package File | Direct Installation Command |
+| :--- | :--- | :--- |
+| **Standalone Binary** | `edged` | `chmod +x edged && ./edged` |
+| **Debian / Ubuntu / Mint** | `edged_*_amd64.deb` | `sudo apt install ./edged_*_amd64.deb` |
+| **Fedora / RHEL / openSUSE** | `edged-*-1.x86_64.rpm` | `sudo dnf install ./edged-*-1.x86_64.rpm` |
+| **Arch Linux / Manjaro** | `edged-*-1-x86_64.pkg.tar.zst` | `sudo pacman -U edged-*-1-x86_64.pkg.tar.zst` |
+| **Universal AppImage** | `edged-*-x86_64.AppImage` | `chmod +x edged-*.AppImage && ./edged-*.AppImage` |
+| **Tarball Archive** | `edged-*-x86_64-linux.tar.gz` | `tar -xzf edged-*.tar.gz && cd edged-* && sudo ./install.sh` |
+
+---
+
+### 2. Arch Linux (AUR)
 
 ```bash
 paru -S edged-git
@@ -145,25 +158,9 @@ paru -S edged-git
 yay -S edged-git
 ```
 
-### Fedora
+### 3. From Source (Cargo)
 
-Install Rust and runtime utilities:
-
-```bash
-sudo dnf install rust cargo grim wl-clipboard
-```
-
-### Ubuntu / Debian
-
-Install Cargo and Wayland clipboard tools:
-
-```bash
-sudo apt install cargo grim wl-clipboard
-```
-
-### From Source (Cargo)
-
-Ensure you have a modern Rust toolchain (version 1.80 or later):
+Ensure you have Rust 1.80 or later installed:
 
 ```bash
 # Clone the repository
@@ -173,19 +170,13 @@ cd Edged
 # Build optimized release binary
 cargo build --release
 
-# Install locally to ~/.local/bin (ensure it is in your $PATH)
-cp target/release/edged ~/.local/bin/
-
-# Alternatively, install system-wide
-sudo cp target/release/edged /usr/local/bin/
+# Run automated installer script (installs binary, desktop entry, and icons)
+sudo ./install.sh
 ```
 
-### Desktop Entry
-
-To launch Edged from application runners (such as Wofi, Rofi, Fuzzel, Anyrun, or Walker):
-
+To install without `sudo` into `~/.local`:
 ```bash
-cp edged.desktop ~/.local/share/applications/
+./install.sh
 ```
 
 ---
@@ -390,8 +381,7 @@ If you want to use custom screenshot tools, Edged provides verified recipes:
 | :--- | :--- | :--- |
 | **`grim`** | `command = "grim %s"` | Standard wlroots tool. Pixel-accurate and fast. |
 | **`grim` (per-monitor)** | `command = "grim -o %o %s"` | Captures only the targeted output connector. |
-| **`hyprshot` (Stdout)** | `command = "hyprshot -m output -s --raw > %s"` | Recommended for Hyprland: outputs raw image to `%s`. |
-| **`hyprshot` (File)** | `command = "hyprshot -m output -s -o %d -f %n"` | Uses `-o` for directory and `-f` for filename. |
+| **`hyprshot`** | `command = "hyprshot -m output -s --raw > %s"` | Recommended for Hyprland: outputs raw image to `%s`. |
 | **`wayshot`** | `command = "wayshot %s"` | Takes positional output filepath directly. |
 | **`grimblast`** | `command = "grimblast save screen %s"` | Popular Hyprland wrapper. |
 | **`grimshot`** | `command = "grimshot save screen %s"` | Sway community wrapper script. |

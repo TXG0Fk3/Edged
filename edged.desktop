@@ -2,7 +2,7 @@
 Name=Edged
 Comment=PowerToys Screen Ruler replica for Wayland
 Exec=edged
-Icon=edit-guides
+Icon=edged
 Terminal=false
 Type=Application
 Categories=Utility;Graphics;Development;

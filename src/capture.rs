@@ -77,6 +77,13 @@ pub fn capture_screen(
             match capture_via_grim(target_monitor) {
                 Ok(img) => Ok(img),
                 Err(grim_err) => {
+                    // On Hyprland, try hyprshot before falling back to portal
+                    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() {
+                        if let Ok(img) = capture_via_hyprshot(target_monitor) {
+                            return Ok(img);
+                        }
+                    }
+
                     // Fall back to xdg-desktop-portal (GNOME, KDE Plasma, etc.)
                     match capture_via_portal() {
                         Ok(img) => Ok(img),
@@ -90,6 +97,28 @@ pub fn capture_screen(
             }
         }
     }
+}
+
+/// Captures the screen using the `hyprshot` utility (native to Hyprland)
+pub fn capture_via_hyprshot(target_monitor: Option<&MonitorInfo>) -> Result<RgbaImage, CaptureError> {
+    let mut cmd = Command::new("hyprshot");
+    cmd.args(["-m", "output", "-s", "--raw"]);
+
+    if let Some(monitor) = target_monitor {
+        // hyprshot does not take monitor name directly on -m output without -o (which is output folder),
+        // but it captures the focused output by default.
+        let _ = monitor;
+    }
+
+    let output = cmd.output().map_err(|e| CaptureError::CommandFailed(format!("Failed to run hyprshot: {}", e)))?;
+    if !output.status.success() || output.stdout.is_empty() {
+        return Err(CaptureError::CommandFailed("hyprshot failed or produced empty output".to_string()));
+    }
+
+    let img = image::load_from_memory(&output.stdout)
+        .map_err(|e| CaptureError::ImageDecodeFailed(format!("Failed to decode hyprshot output: {}", e)))?;
+
+    Ok(img.to_rgba8())
 }
 
 /// Captures the screen using the `grim` utility (Wayland screencopy)

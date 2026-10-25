@@ -287,6 +287,29 @@ fn test_monitor_image_crop() {
 }
 
 #[test]
+fn test_single_monitor_portal_padding_trim() {
+    let mut oversized = RgbaImage::new(2400, 1350);
+    oversized.put_pixel(100, 100, Rgba([0, 255, 0, 255]));
+
+    let target = MonitorInfo {
+        name: "DP-1".to_string(),
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        scale: 1.25,
+        is_primary: true,
+        is_focused: true,
+    };
+
+    let all_monitors = vec![target.clone()];
+    let trimmed = crop_image_if_needed(oversized, &target, &all_monitors, true);
+    assert_eq!(trimmed.width(), 1920);
+    assert_eq!(trimmed.height(), 1080);
+    assert_eq!(trimmed.get_pixel(100, 100), &Rgba([0, 255, 0, 255]));
+}
+
+#[test]
 fn test_find_newest_image_in_dir() {
     use edged::capture::find_newest_image_in_dir;
     use std::fs;

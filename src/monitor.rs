@@ -276,56 +276,74 @@ pub fn resolve_target_monitor<'a>(
 }
 
 /// Automatically crops a screenshot image to the target monitor's bounds if the screenshot covers multiple monitors
+/// or if a portal/compositor returns an image with unrendered padding outside the active monitor.
 pub fn crop_image_if_needed(
     image: RgbaImage,
     target: &MonitorInfo,
     all_monitors: &[MonitorInfo],
     crop_enabled: bool,
 ) -> RgbaImage {
-    if !crop_enabled || all_monitors.len() <= 1 {
+    if !crop_enabled {
         return image;
     }
 
-    let target_phys_w = (target.width as f64 * target.scale).round() as u32;
-    let target_phys_h = (target.height as f64 * target.scale).round() as u32;
+    let target_phys_w = target.width;
+    let target_phys_h = target.height;
 
-    // If the image already matches the target monitor physical dimensions (e.g. grim -o was used), no crop needed
+    // Case 1: Exact match with physical dimensions
     if image.width() == target_phys_w && image.height() == target_phys_h {
         return image;
     }
 
-    // If the image is smaller than the target monitor, cannot crop safely
-    if image.width() < target_phys_w && image.height() < target_phys_h {
+    // Case 2: Exact match with logical dimensions (if captured at 1x logical scale)
+    let target_logical_w = (target.width as f64 / target.scale).round() as u32;
+    let target_logical_h = (target.height as f64 / target.scale).round() as u32;
+    if image.width() == target_logical_w && image.height() == target_logical_h {
         return image;
     }
 
-    // Determine total logical desktop bounds
-    let min_x = all_monitors.iter().map(|m| m.x).min().unwrap_or(0);
-    let min_y = all_monitors.iter().map(|m| m.y).min().unwrap_or(0);
-    let max_x = all_monitors
-        .iter()
-        .map(|m| m.x + m.width as i32)
-        .max()
-        .unwrap_or(target.width as i32);
-    let max_y = all_monitors
-        .iter()
-        .map(|m| m.y + m.height as i32)
-        .max()
-        .unwrap_or(target.height as i32);
+    // Case 3: Single monitor, but portal captured extra buffer padding (e.g. xdg-desktop-portal-hyprland fractional scaling bug)
+    if all_monitors.len() <= 1 {
+        // If image is larger than the physical monitor, crop the top-left visible area
+        if image.width() > target_phys_w && image.height() >= target_phys_h {
+            println!(
+                "[edged] Single-monitor portal: trimming buffer padding from {}x{} to target {}x{}",
+                image.width(), image.height(), target_phys_w, target_phys_h
+            );
+            return image::imageops::crop_imm(&image, 0, 0, target_phys_w, target_phys_h).to_image();
+        }
+        return image;
+    }
 
-    let total_logical_w = (max_x - min_x).max(1) as f64;
-    let total_logical_h = (max_y - min_y).max(1) as f64;
+    // Case 4: Multi-monitor setup
+    // Calculate accurate logical bounding box across all displays
+    let min_logical_x = all_monitors.iter().map(|m| m.x).min().unwrap_or(0);
+    let min_logical_y = all_monitors.iter().map(|m| m.y).min().unwrap_or(0);
+
+    let max_logical_x = all_monitors
+        .iter()
+        .map(|m| m.x + (m.width as f64 / m.scale).round() as i32)
+        .max()
+        .unwrap_or(target_logical_w as i32);
+    let max_logical_y = all_monitors
+        .iter()
+        .map(|m| m.y + (m.height as f64 / m.scale).round() as i32)
+        .max()
+        .unwrap_or(target_logical_h as i32);
+
+    let total_logical_w = (max_logical_x - min_logical_x).max(1) as f64;
+    let total_logical_h = (max_logical_y - min_logical_y).max(1) as f64;
 
     let scale_x = image.width() as f64 / total_logical_w;
     let scale_y = image.height() as f64 / total_logical_h;
 
-    let rel_x = (target.x - min_x) as f64;
-    let rel_y = (target.y - min_y) as f64;
+    let rel_logical_x = (target.x - min_logical_x) as f64;
+    let rel_logical_y = (target.y - min_logical_y) as f64;
 
-    let crop_x = (rel_x * scale_x).round() as u32;
-    let crop_y = (rel_y * scale_y).round() as u32;
-    let crop_w = (target.width as f64 * scale_x).round() as u32;
-    let crop_h = (target.height as f64 * scale_y).round() as u32;
+    let crop_x = (rel_logical_x * scale_x).round() as u32;
+    let crop_y = (rel_logical_y * scale_y).round() as u32;
+    let crop_w = (target_logical_w as f64 * scale_x).round() as u32;
+    let crop_h = (target_logical_h as f64 * scale_y).round() as u32;
 
     // Bounds safety clamping
     if crop_x >= image.width() || crop_y >= image.height() {
