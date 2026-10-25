@@ -14,8 +14,8 @@ categories = ["command-line-utilities", "development-tools", "graphics"]
 [package.metadata.deb]
 maintainer = "TXG0Fk3 <txg0fk3@proton.me>"
 copyright = "2026 TXG0Fk3"
-license-file = ["LICENSE", "4"]
-depends = "$auto"
+license-file = "LICENSE"
+depends = "libc6 (>= 2.31)"
 recommends = "grim, wl-clipboard"
 section = "utils"
 priority = "optional"
@@ -31,13 +31,13 @@ assets = [
 
 [package.metadata.generate-rpm]
 assets = [
-    { source = "target/release/edged", dest = "/usr/bin/edged", mode = "755" },
-    { source = "edged.desktop", dest = "/usr/share/applications/edged.desktop", mode = "644" },
-    { source = "assets/edged.png", dest = "/usr/share/icons/hicolor/256x256/apps/edged.png", mode = "644" },
-    { source = "assets/edged.svg", dest = "/usr/share/icons/hicolor/scalable/apps/edged.svg", mode = "644" },
-    { source = "config.example.toml", dest = "/usr/share/doc/edged/config.example.toml", mode = "644" },
-    { source = "README.md", dest = "/usr/share/doc/edged/README.md", mode = "644" },
-    { source = "LICENSE", dest = "/usr/share/doc/edged/LICENSE", mode = "644" },
+    { source = "target/release/edged", dest = "/usr/bin/edged", mode = "0755" },
+    { source = "edged.desktop", dest = "/usr/share/applications/edged.desktop", mode = "0644" },
+    { source = "assets/edged.png", dest = "/usr/share/icons/hicolor/256x256/apps/edged.png", mode = "0644" },
+    { source = "assets/edged.svg", dest = "/usr/share/icons/hicolor/scalable/apps/edged.svg", mode = "0644" },
+    { source = "config.example.toml", dest = "/usr/share/doc/edged/config.example.toml", mode = "0644", doc = true },
+    { source = "README.md", dest = "/usr/share/doc/edged/README.md", mode = "0644", doc = true },
+    { source = "LICENSE", dest = "/usr/share/licenses/edged/LICENSE", mode = "0644", doc = true },
 ]
 
 [dependencies]

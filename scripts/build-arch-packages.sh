@@ -2,32 +2,38 @@
 set -ex
 
 # ==============================================================================
-# Edged - Arch Linux Container Build & Packaging Script
+# Edged - Arch Linux Build & Distro Packaging Script
 # ==============================================================================
 
-VERSION="${VERSION:-v$(date -u +'%Y.%m.%d').1}"
-CLEAN_VERSION="${CLEAN_VERSION:-$(date -u +'%Y.%m.%d').1}"
+# Ensure version variables exist
+if [ -z "$VERSION" ]; then
+    TODAY=$(date -u +'%Y.%m.%d')
+    TODAY_RELEASES=$(git tag -l "v${TODAY}*" 2>/dev/null | wc -l || echo 0)
+    RELEASE_COUNT=$((TODAY_RELEASES + 1))
+    VERSION="v${TODAY}.${RELEASE_COUNT}"
+    CLEAN_VERSION="${TODAY}.${RELEASE_COUNT}"
+fi
 
-echo "==> Building Edged ${VERSION} inside Arch Linux environment..."
+echo "==> Building Edged ${VERSION} (${CLEAN_VERSION}) on Arch Linux..."
 
-# 1. Update Arch Linux and install packaging toolchain
-pacman -Syu --noconfirm rust cargo git zstd binutils desktop-file-utils cargo-generate-rpm wget file
+# Update Cargo.toml version string for consistent packaging across all formats
+sed -i "s/^version = \".*\"/version = \"${CLEAN_VERSION}\"/" Cargo.toml
 
-# 2. Run automated test suite
+# 1. Run automated test suite
 cargo test --release
 
-# 3. Build optimized release binary
+# 2. Build optimized release binary
 cargo build --release --locked
 strip target/release/edged
 
-# Ensure output directory exists
+# Prepare output directory
 mkdir -p dist
 
-# 4. Standalone Binaries (executable without packaging)
+# 3. Standalone Executables (Ready to chmod +x and run)
 cp target/release/edged dist/edged
 cp target/release/edged dist/edged-standalone-x86_64
 
-# 5. Linux Tarball (.tar.gz with automated installer)
+# 4. Linux Tarball (.tar.gz with automated installer)
 TAR_DIR="edged-${VERSION}-x86_64"
 mkdir -p "${TAR_DIR}/assets"
 cp target/release/edged "${TAR_DIR}/"
@@ -40,88 +46,55 @@ cp assets/* "${TAR_DIR}/assets/"
 tar -czvf "dist/edged-${VERSION}-x86_64-linux.tar.gz" "${TAR_DIR}"
 rm -rf "${TAR_DIR}"
 
-# 6. Arch Linux Native Package (.pkg.tar.zst)
-ARCH_DIR="arch_pkg"
-mkdir -p "${ARCH_DIR}/usr/bin" \
-         "${ARCH_DIR}/usr/share/applications" \
-         "${ARCH_DIR}/usr/share/icons/hicolor/256x256/apps" \
-         "${ARCH_DIR}/usr/share/icons/hicolor/scalable/apps" \
-         "${ARCH_DIR}/usr/share/doc/edged" \
-         "${ARCH_DIR}/usr/share/licenses/edged"
+# 5. Arch Linux Native Package (.pkg.tar.zst via canonical makepkg)
+cat << EOF > PKGBUILD
+# Maintainer: TXG0Fk3 <https://github.com/TXG0Fk3/Edged>
+pkgname=edged
+pkgver=${CLEAN_VERSION}
+pkgrel=1
+pkgdesc="High-quality PowerToys Screen Ruler replica natively built for Wayland"
+arch=('x86_64')
+url="https://github.com/TXG0Fk3/Edged"
+license=('MIT')
+depends=('glibc' 'gcc-libs')
+optdepends=(
+    'grim: Wayland screencopy screenshot utility'
+    'hyprshot: Hyprland screenshot utility'
+    'wl-clipboard: Wayland clipboard support'
+)
+options=('!debug')
 
-cp target/release/edged "${ARCH_DIR}/usr/bin/"
-cp edged.desktop "${ARCH_DIR}/usr/share/applications/"
-cp assets/edged.png "${ARCH_DIR}/usr/share/icons/hicolor/256x256/apps/edged.png"
-cp assets/edged.svg "${ARCH_DIR}/usr/share/icons/hicolor/scalable/apps/edged.svg"
-cp config.example.toml "${ARCH_DIR}/usr/share/doc/edged/"
-cp README.md "${ARCH_DIR}/usr/share/doc/edged/"
-cp LICENSE "${ARCH_DIR}/usr/share/doc/edged/"
-cp LICENSE "${ARCH_DIR}/usr/share/licenses/edged/"
-
-cat << EOF > "${ARCH_DIR}/.PKGINFO"
-pkgname = edged
-pkgbase = edged
-pkgver = ${CLEAN_VERSION}-1
-pkgdesc = High-quality PowerToys Screen Ruler replica for Wayland
-url = https://github.com/TXG0Fk3/Edged
-builddate = $(date +%s)
-packager = TXG0Fk3 <https://github.com/TXG0Fk3/Edged>
-size = $(du -sb "${ARCH_DIR}" | awk '{print $1}')
-arch = x86_64
-license = MIT
-depend = glibc
-optdepend = grim: Wayland screencopy screenshot utility
-optdepend = hyprshot: Hyprland screenshot utility
-optdepend = wl-clipboard: Wayland clipboard support
+package() {
+    install -Dm755 "\${srcdir}/../target/release/edged" "\${pkgdir}/usr/bin/edged"
+    install -Dm644 "\${srcdir}/../edged.desktop" "\${pkgdir}/usr/share/applications/edged.desktop"
+    install -Dm644 "\${srcdir}/../assets/edged.png" "\${pkgdir}/usr/share/icons/hicolor/256x256/apps/edged.png"
+    install -Dm644 "\${srcdir}/../assets/edged.svg" "\${pkgdir}/usr/share/icons/hicolor/scalable/apps/edged.svg"
+    install -Dm644 "\${srcdir}/../config.example.toml" "\${pkgdir}/usr/share/doc/edged/config.example.toml"
+    install -Dm644 "\${srcdir}/../README.md" "\${pkgdir}/usr/share/doc/edged/README.md"
+    install -Dm644 "\${srcdir}/../LICENSE" "\${pkgdir}/usr/share/licenses/edged/LICENSE"
+}
 EOF
 
-(cd "${ARCH_DIR}" && bsdtar --uid 0 --gid 0 -cf - .PKGINFO usr | zstd -c -T0 -19 > "../dist/edged-${CLEAN_VERSION}-1-x86_64.pkg.tar.zst")
-rm -rf "${ARCH_DIR}"
+# If running as root, run makepkg as the builder user (makepkg refuses root)
+if [ "$(id -u)" -eq 0 ] && id "user" &>/dev/null; then
+    chown -R user:user .
+    sudo -u user makepkg -f --noconfirm
+else
+    makepkg -f --noconfirm
+fi
+cp edged-${CLEAN_VERSION}-1-x86_64.pkg.tar.zst dist/
+rm -f PKGBUILD edged-${CLEAN_VERSION}-1-x86_64.pkg.tar.zst
+rm -rf src pkg
 
-# 7. Fedora / RHEL Package (.rpm via official cargo-generate-rpm on Arch)
+# 6. Debian / Ubuntu Package (.deb via official cargo-deb)
+cargo deb --no-build
+cp target/debian/*.deb "dist/edged_${CLEAN_VERSION}_amd64.deb"
+
+# 7. Fedora / RHEL Package (.rpm via official cargo-generate-rpm)
 cargo generate-rpm
 cp target/generate-rpm/*.rpm "dist/edged-${CLEAN_VERSION}-1.x86_64.rpm"
 
-# 8. Debian / Ubuntu Package (.deb via native ar + tar)
-DEB_DIR="deb_pkg"
-mkdir -p "${DEB_DIR}/DEBIAN" \
-         "${DEB_DIR}/usr/bin" \
-         "${DEB_DIR}/usr/share/applications" \
-         "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps" \
-         "${DEB_DIR}/usr/share/icons/hicolor/scalable/apps" \
-         "${DEB_DIR}/usr/share/doc/edged"
-
-cp target/release/edged "${DEB_DIR}/usr/bin/"
-cp edged.desktop "${DEB_DIR}/usr/share/applications/"
-cp assets/edged.png "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/edged.png"
-cp assets/edged.svg "${DEB_DIR}/usr/share/icons/hicolor/scalable/apps/edged.svg"
-cp config.example.toml "${DEB_DIR}/usr/share/doc/edged/"
-cp README.md "${DEB_DIR}/usr/share/doc/edged/"
-cp LICENSE "${DEB_DIR}/usr/share/doc/edged/"
-
-INSTALLED_SIZE=$(du -sk "${DEB_DIR}/usr" | awk '{print $1}')
-cat << EOF > "${DEB_DIR}/DEBIAN/control"
-Package: edged
-Version: ${CLEAN_VERSION}
-Section: utils
-Priority: optional
-Architecture: amd64
-Installed-Size: ${INSTALLED_SIZE}
-Maintainer: TXG0Fk3 <txg0fk3@proton.me>
-Depends: libc6 (>= 2.31)
-Recommends: grim, wl-clipboard
-Homepage: https://github.com/TXG0Fk3/Edged
-Description: High-quality PowerToys Screen Ruler replica for Wayland
- Fast, pixel-accurate screen measuring tool for Wayland desktops.
-EOF
-
-echo "2.0" > "${DEB_DIR}/debian-binary"
-(cd "${DEB_DIR}/DEBIAN" && tar -czf ../control.tar.gz control)
-(cd "${DEB_DIR}" && tar -czf data.tar.gz usr)
-ar rcs "dist/edged_${CLEAN_VERSION}_amd64.deb" "${DEB_DIR}/debian-binary" "${DEB_DIR}/control.tar.gz" "${DEB_DIR}/data.tar.gz"
-rm -rf "${DEB_DIR}"
-
-# 9. Universal AppImage (.AppImage)
+# 8. Universal AppImage (.AppImage via appimagetool extracted runtime)
 APPDIR="AppDir"
 mkdir -p "${APPDIR}/usr/bin" \
          "${APPDIR}/usr/share/applications" \
@@ -142,16 +115,18 @@ exec "${HERE}/usr/bin/edged" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"
 
-if [ ! -f "/usr/local/bin/appimagetool" ]; then
-    wget -q -O /usr/local/bin/appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-    chmod +x /usr/local/bin/appimagetool
+# Download and extract appimagetool to work cleanly in containers without FUSE
+if [ ! -d "/tmp/appimagetool-extracted" ]; then
+    wget -q -O /tmp/appimagetool.AppImage "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+    chmod +x /tmp/appimagetool.AppImage
+    (cd /tmp && ./appimagetool.AppImage --appimage-extract && mv squashfs-root appimagetool-extracted && rm -f appimagetool.AppImage)
 fi
 
-ARCH=x86_64 /usr/local/bin/appimagetool --appimage-extract-and-run "${APPDIR}" "dist/edged-${VERSION}-x86_64.AppImage"
+ARCH=x86_64 /tmp/appimagetool-extracted/AppRun "${APPDIR}" "dist/edged-${VERSION}-x86_64.AppImage"
 rm -rf "${APPDIR}"
 
-# 10. Generate Checksums
+# 9. Checksums
 (cd dist && sha256sum * > SHA256SUMS.txt)
 
-echo "==> Packaging complete! Generated assets in dist/:"
+echo "==> Build and packaging completed successfully!"
 ls -lh dist/
