@@ -64,7 +64,8 @@ Edged/
 │   │   └── nixos.nix              # NixOS module (/etc/xdg/edged/config.toml system configuration)
 │   ├── package.nix                # Derivation wrapping precompiled binary (autoPatchelfHook + wrapProgram)
 │   ├── sources.json               # Auto-updated release artifact metadata and SHA-256 hash
-│   └── update.sh                  # Interactive/automated script to update sources.json to latest release
+│   ├── update.sh                  # Interactive/automated script to update sources.json to latest release
+│   └── README.md                  # Comprehensive Nix, NixOS, and Home Manager guide
 ├── scripts/
 │   └── build-arch-packages.sh     # Comprehensive packaging script (.pkg.tar.zst, .deb, .rpm, .AppImage)
 ├── src/

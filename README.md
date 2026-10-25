@@ -160,6 +160,8 @@ inputs = {
 }
 ```
 
+> 📖 For full Home Manager options, NixOS module settings, overlays, and packaging architecture, see [**`nix/README.md`**](nix/README.md).
+
 ---
 
 ### 2. Precompiled Packages (GitHub Releases)
