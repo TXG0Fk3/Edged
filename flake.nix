@@ -27,6 +27,7 @@
         default = {
           type = "app";
           program = "${self.packages.${system}.default}/bin/edged";
+          meta.description = "Launch Edged screen ruler";
         };
         edged = self.apps.${system}.default;
       });
