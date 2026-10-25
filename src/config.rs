@@ -266,50 +266,60 @@ pub struct Config {
 }
 
 pub const DEFAULT_CONFIG_COMMENTED: &str = r##"# ==============================================================================
-# Edged - Screen Ruler for Wayland (Hyprland, GNOME, Sway, River, etc.)
-# Configuration file: ~/.config/edged/config.toml
+# Edged - Screen Measuring Tool for Wayland
+# Default configuration file: ~/.config/edged/config.toml
 # ==============================================================================
 
 [general]
-# Default mode when starting without arguments: "bounds", "spacing", "horizontal", "vertical"
+# Default measurement mode when starting without command line arguments:
+# Options: "spacing", "bounds", "horizontal", "vertical"
+#   - "spacing":    (Default) 4-way cross measuring margins, padding, and spacing
+#   - "bounds":     Click and drag to measure rectangular regions
+#   - "horizontal": Horizontal distance between contrast edges
+#   - "vertical":   Vertical distance between contrast edges
 default_mode = "spacing"
 
-# Whether to close the application immediately after copying a measurement
+# Automatically close Edged immediately after copying a measurement to the clipboard.
+# If set to false, Edged stays open until you hit Esc, Q, or right-click.
 close_on_copy = true
 
 [monitor]
-# Multi-monitor target mode: "focused", "all", "primary", or specific connector name ("DP-1", "HDMI-A-1", "eDP-1")
-# - "focused": (Default & Recommended) Always targets the currently active / focused monitor where your cursor or active window is.
-#              Avoids multi-monitor glitches, scaling differences, and black/misaligned surfaces.
-# - "all": Spans the ruler overlay across all connected monitors.
-# - "primary": Targets the primary display.
-# - "<name>": Targets a specific monitor by connector name (e.g. "DP-1", "HDMI-A-1", "Virtual-1").
+# Multi-monitor target strategy:
+# Options: "focused", "all", "primary", or specific connector name ("DP-1", "HDMI-A-1", "eDP-1")
+#   - "focused": (Default & Recommended) Automatically measures on the display currently in focus
+#                (holding your cursor or active window). Prevents coordinate distortion and black bars.
+#   - "all":     Spans the measurement canvas across all connected displays simultaneously.
+#   - "primary": Targets the primary output reported by your compositor.
+#   - "<name>":  Targets a specific monitor connector (e.g. "DP-1", "HDMI-A-1", "Virtual-1").
 target = "focused"
 
-# When target is a single monitor ("focused", "primary", or "<name>"), automatically crop multi-monitor screenshots
-# so that the ruler overlay matches the target monitor 1:1 without displaying pieces of other monitors.
+# When target is a single monitor ("focused", "primary", or "<name>"), automatically crop
+# multi-monitor composite screenshots down to the target monitor's physical bounds.
+# This ensures pixel-for-pixel coordinate alignment with zero black borders.
 crop_to_monitor = true
 
 [capture]
-# Screen capture method: "auto", "grim", "portal", "custom"
-# - "auto": Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
-# - "grim": Forces using the 'grim' utility
-# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
-# - "custom": Executes the custom command specified below
+# Backend method to acquire the freeze-frame desktop snapshot:
+# Options: "auto", "grim", "portal", "custom"
+#   - "auto":   Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to XDG Desktop Portal.
+#   - "grim":   Forces using the 'grim' command-line utility.
+#   - "portal": Forces screenshot capture through org.freedesktop.portal.Screenshot (PipeWire).
+#   - "custom": Executes the user-defined shell command specified below.
 method = "auto"
 
-# Custom shell command when method = "custom"
-# Available path and monitor placeholders:
-#   %s or %path     Full temporary output file path (e.g. /tmp/edged_custom_1234.png)
-#   %d or %dir      Temporary directory (e.g. /tmp)
-#   %n or %filename Temporary output filename without directory (e.g. edged_custom_1234.png)
-#   %o or %output   Target monitor connector name (e.g. DP-1, Virtual-1)
-#   %w or %width    Target monitor width in pixels
-#   %h or %height   Target monitor height in pixels
-#   %x              Target monitor x offset
-#   %y              Target monitor y offset
+# Shell command executed when method = "custom". Leave empty to use auto-detection.
 #
-# Verified Examples:
+# Available path and monitor placeholders:
+#   %s or %path     Full temporary output file destination path (e.g. /tmp/edged_capture_1234.png)
+#   %d or %dir      Directory containing the temporary output file (e.g. /tmp)
+#   %n or %filename Base filename without directory (e.g. edged_capture_1234.png)
+#   %o or %output   Target monitor connector name (e.g. DP-1, Virtual-1)
+#   %w or %width    Target monitor pixel width (e.g. 1920)
+#   %h or %height   Target monitor pixel height (e.g. 1080)
+#   %x              Target monitor X offset (e.g. 0)
+#   %y              Target monitor Y offset (e.g. 0)
+#
+# Verified Recipes:
 #   # Grim (standard Wayland / wlroots tool, takes output file directly):
 #   command = "grim %s"
 #
@@ -338,71 +348,74 @@ method = "auto"
 #   command = "flameshot full -r > %s"
 command = ""
 
-# Timeout in seconds for custom capture command execution
+# Maximum timeout in seconds before canceling a hanging custom capture command
 timeout_seconds = 5
 
 [shortcuts]
-# Key to cycle through modes in order: "Tab" (or any key name like "grave", "space")
-# Tip: Shift + Tab will cycle in reverse!
+# Keyboard key used to cycle through measurement modes in order:
+# Options: "Tab", "grave", "space", or any key character.
+# Tip: Holding Shift + Key cycles in reverse!
 cycle_mode_key = "Tab"
 
-# Direct number keys to switch modes
+# Direct number keys to switch modes immediately
 mode_bounds_key = "1"
 mode_spacing_key = "2"
 mode_horizontal_key = "3"
 mode_vertical_key = "4"
 
-# Alternative mnemonic letter keys to switch modes
+# Alternative mnemonic letter keys to switch modes immediately
 alt_mode_bounds_key = "b"
 alt_mode_spacing_key = "s"
 alt_mode_horizontal_key = "h"
 alt_mode_vertical_key = "v"
 
-# Allow Shift + Mouse Scroll to cycle through modes during runtime
+# Allow Shift + Mouse Wheel to cycle through modes in real time
 shift_scroll_cycles_mode = true
 
-# Allow Ctrl + Mouse Scroll to cycle through modes during runtime
+# Allow Ctrl + Mouse Wheel to cycle through modes in real time
 ctrl_scroll_cycles_mode = true
 
 [ruler]
-# Initial tolerance percentage for edge detection (1 to 100)
-# Lower values are more sensitive to subtle color variations.
+# Initial tolerance percentage for edge detection (1 to 100).
+# Lower values detect subtle color gradients; higher values bridge softer edges.
 initial_tolerance = 15
 
-# Tolerance adjustment step per mouse scroll wheel tick
+# Percentage points added or subtracted per mouse wheel scroll notch.
+# Default is 2% per notch for precise, smooth sensitivity adjustment.
 tolerance_step = 2
 
-# Draw feet (perpendicular tick marks at line ends showing exact measurement bounds)
+# Draw perpendicular tick marks ('feet') at measurement line ends showing exact boundaries
 draw_feet = true
 
-# Size of the feet tick marks in pixels
+# Length of the feet tick marks in pixels
 feet_size = 10.0
 
-# Thickness of the measurement lines in pixels
+# Stroke thickness of the ruler lines in pixels
 line_thickness = 2.0
 
-# Display a subtle crosshair at the cursor position
+# Render a crosshair guide at the cursor position
 draw_crosshair = true
 
 [bounds]
-# In Bounds mode, holding Shift keeps previously drawn rectangles pinned to the screen
+# In Bounds mode, holding Shift upon releasing a drag keeps drawn rectangles pinned to the screen
 shift_pins_bounds = true
 
-# Border thickness for rectangles in Bounds mode
+# Stroke thickness for rectangle borders in Bounds mode (pixels)
 border_thickness = 2.0
 
 [appearance]
-# Dim overlay opacity (0.0 = completely transparent, 0.05 = subtle dimming)
+# Dim overlay opacity (0.0 = completely transparent, 0.05 = subtle 5% dimming)
 overlay_opacity = 0.05
 
-# Colors formatted as hex "#RRGGBB", "#RRGGBBAA", or "rgba(r, g, b, a)"
+# Measurement line colors: formatted as hex "#RRGGBB", "#RRGGBBAA", or "rgba(r, g, b, a)"
 line_color = "#3B82F6"
-line_shadow_color = "rgba(0, 0, 0, 0.6)"
+line_shadow_color = "rgba(0, 0, 0, 0.60)"
 
+# Bounds mode rectangle colors
 bounds_fill_color = "rgba(59, 130, 246, 0.15)"
 bounds_border_color = "#3B82F6"
 
-# Label badges styling
+# Measurement badge styling
 label_bg_color = "rgba(15, 23, 42, 0.90)"
 label_text_color = "#F8FAFC"
 label_border_color = "#475569"
@@ -413,20 +426,20 @@ label_padding_x = 7.0
 label_padding_y = 3.5
 
 [units]
-# Show the "px" suffix on labels
+# Show the "px" suffix on on-screen measurement badges
 show_pixel_unit = true
 
-# Optional secondary unit: "none", "inch", "cm", "mm", "pt"
+# Optional secondary unit conversion: "none", "inch", "cm", "mm", "pt"
 secondary_unit = "none"
 
-# Screen DPI for secondary unit calculations
+# Screen DPI used for physical unit calculation
 screen_dpi = 96.0
 
 [clipboard]
 # Text format copied to clipboard on click:
-# - "compact": e.g. "1920x1080", "120"
-# - "verbose": e.g. "1920 × 1080 px", "120 px"
-# - "css":     e.g. "width: 1920px; height: 1080px;", "width: 120px;"
+#   - "compact": e.g. "1920x1080" (Bounds) or "120" (Spacing)
+#   - "verbose": e.g. "1920 × 1080 px" or "120 px"
+#   - "css":     e.g. "width: 1920px; height: 1080px;" or "width: 120px;"
 format = "compact"
 "##;
 
