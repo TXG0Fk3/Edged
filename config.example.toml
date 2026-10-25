@@ -1,0 +1,89 @@
+# ==============================================================================
+# Edged - Screen Ruler para Wayland (Hyprland, GNOME, Sway, etc.)
+# Arquivo de exemplo: config.example.toml
+# Copie para: ~/.config/edged/config.toml
+# ==============================================================================
+
+[general]
+# Modo padrão ao iniciar sem argumentos: "bounds", "spacing", "horizontal", "vertical"
+default_mode = "spacing"
+
+# Método de captura de tela: "auto", "grim", "portal", "command"
+# - "auto": Tenta 'grim' primeiro (wlroots / Hyprland / Sway), com fallback para xdg-desktop-portal (GNOME / KDE)
+# - "grim": Força uso do 'grim'
+# - "portal": Força uso do portal XDG Desktop (PipeWire / Screenshot portal)
+# - "command": Executa um comando customizado definido abaixo
+capture_method = "auto"
+
+# Comando customizado caso capture_method = "command"
+# Use %s onde o caminho do arquivo temporário PNG de saída deve ser inserido.
+# Exemplo: "wayshot --file %s"
+custom_capture_command = ""
+
+# Se deve fechar o aplicativo imediatamente após copiar a medida com o clique esquerdo
+close_on_copy = true
+
+[ruler]
+# Tolerância inicial para edge detection (em porcentagem: 1 a 100)
+# Quanto menor, mais sensível a pequenas variações de cor.
+initial_tolerance = 15
+
+# Variação da tolerância a cada "tick" de scroll da roda do mouse
+tolerance_step = 2
+
+# Desenhar "pés" (linhas perpendiculares nas pontas das réguas indicando os limites exatos)
+draw_feet = true
+
+# Tamanho dos pés em pixels
+feet_size = 10.0
+
+# Espessura da linha de medição
+line_thickness = 2.0
+
+# Exibir mira central sutil na posição exata do cursor
+draw_crosshair = true
+
+[bounds]
+# No modo Bounds, manter Shift pressionado fixa retângulos anteriores na tela
+shift_pins_bounds = true
+
+# Espessura da borda do retângulo no modo Bounds
+border_thickness = 2.0
+
+[appearance]
+# Opacidade do fundo escurecido da tela (0.0 = totalmente transparente, 0.05 = leve escurecimento)
+overlay_opacity = 0.05
+
+# Cores no formato hexadecimal "#RRGGBB", "#RRGGBBAA" ou "rgba(r, g, b, a)"
+line_color = "#3B82F6"
+line_shadow_color = "rgba(0, 0, 0, 0.6)"
+
+bounds_fill_color = "rgba(59, 130, 246, 0.15)"
+bounds_border_color = "#3B82F6"
+
+# Estilo das etiquetas numéricas (badges)
+label_bg_color = "rgba(15, 23, 42, 0.90)"
+label_text_color = "#F8FAFC"
+label_border_color = "#475569"
+label_font_family = "sans-serif"
+label_font_size = 12.0
+label_border_radius = 5.0
+label_padding_x = 7.0
+label_padding_y = 3.5
+
+[units]
+# Exibir o sufixo "px" nas etiquetas
+show_pixel_unit = true
+
+# Unidade secundária opcional: "none", "inch", "cm", "mm", "pt"
+secondary_unit = "none"
+
+# DPI para cálculo da unidade secundária
+screen_dpi = 96.0
+
+[clipboard]
+# Formato do texto copiado ao clicar:
+# - "compact": ex: "1920x1080", "120"
+# - "verbose": ex: "1920 × 1080 px", "120 px"
+# - "css":     ex: "width: 1920px; height: 1080px;", "width: 120px;"
+format = "compact"

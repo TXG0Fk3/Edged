@@ -1,0 +1,26 @@
+[Desktop Entry]
+Name=Edged
+Comment=PowerToys Screen Ruler replica for Wayland
+Exec=edged
+Icon=edit-guides
+Terminal=false
+Type=Application
+Categories=Utility;Graphics;Development;
+StartupNotify=false
+Actions=Bounds;Spacing;Horizontal;Vertical;
+
+[Desktop Action Bounds]
+Name=Bounds Mode
+Exec=edged --bounds
+
+[Desktop Action Spacing]
+Name=Spacing Mode
+Exec=edged --spacing
+
+[Desktop Action Horizontal]
+Name=Horizontal Mode
+Exec=edged --horizontal
+
+[Desktop Action Vertical]
+Name=Vertical Mode
+Exec=edged --vertical
