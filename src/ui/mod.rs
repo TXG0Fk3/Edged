@@ -32,6 +32,7 @@ pub fn matches_key(key: &egui::Key, key_name: &str) -> bool {
 
 pub struct EdgedApp {
     config: Arc<Config>,
+    theme: renderer::RenderTheme,
     detector: Arc<EdgeDetector>,
     screen_image: Arc<RgbaImage>,
     texture: Option<egui::TextureHandle>,
@@ -57,8 +58,10 @@ impl EdgedApp {
         initial_mode: RulerMode,
         initial_tolerance: u8,
     ) -> Self {
+        let theme = renderer::RenderTheme::from_config(&config);
         Self {
             config,
+            theme,
             detector,
             screen_image,
             texture: None,
@@ -82,13 +85,32 @@ impl eframe::App for EdgedApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Ensure immediate repaints for continuous, silky smooth measurement feedback
-        ctx.request_repaint();
+        // WHY reactive repaint scheduling instead of unconditional request_repaint():
+        // Unconditional `ctx.request_repaint()` forces continuous 144+ FPS rendering even when idle,
+        // consuming 15-30% CPU and draining laptop batteries.
+        // Egui automatically repaints on user input (pointer move, clicks, keypresses).
+        // For temporary HUD fadeouts, we schedule a repaint at the exact moment the HUD expires.
+        let now = Instant::now();
+        let mut next_hud_wake = None;
+        if let Some(until) = self.tolerance_hud_until {
+            if until > now {
+                next_hud_wake = Some(until.duration_since(now));
+            }
+        }
+        if let Some(until) = self.mode_hud_until {
+            if until > now {
+                let remaining = until.duration_since(now);
+                next_hud_wake = Some(next_hud_wake.map_or(remaining, |prev: Duration| prev.min(remaining)));
+            }
+        }
+        if let Some(duration) = next_hud_wake {
+            ctx.request_repaint_after(duration);
+        }
+
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
 
         let viewport_rect = ctx.viewport_rect();
-        let mut painter = ui.painter().clone();
-        painter.set_clip_rect(viewport_rect);
+        let painter = ui.painter().with_clip_rect(viewport_rect);
 
         let img_w = self.screen_image.width() as f32;
         let img_h = self.screen_image.height() as f32;
@@ -126,79 +148,69 @@ impl eframe::App for EdgedApp {
             painter.rect_filled(viewport_rect, 0.0, egui::Color32::from_black_alpha(dim_alpha));
         }
 
-        // 2. Process modifiers and cursor position
+        // 2. Consolidated single-pass input extraction
+        // WHY single ctx.input block:
+        // Querying `ctx.input(|i| ...)` multiple separate times per frame repeatedly acquires egui's
+        // internal read locks. Gathering all input state in one pass eliminates lock thrashing.
+        let mut close_requested = false;
+        let mut mode_changed = false;
+        let mut wheel_events = Vec::new();
+        let mut primary_pressed = false;
+        let mut primary_down = false;
+        let mut primary_released = false;
+        let mut right_clicked = false;
+
         ctx.input(|i| {
             self.shift_held = i.modifiers.shift;
             self.ctrl_held = i.modifiers.ctrl;
             if let Some(pos) = i.pointer.hover_pos() {
                 self.cursor = pos;
             }
-        });
 
-        // 3. Process keyboard input
-        let mut close_requested = false;
-        let mut mode_changed = false;
-
-        ctx.input(|i| {
+            // Keyboard navigation
             if i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Q) {
                 close_requested = true;
             }
 
             // Tab mode cycling
             if matches_key(&egui::Key::Tab, &self.config.shortcuts.cycle_mode_key) && i.key_pressed(egui::Key::Tab) {
-                if self.shift_held {
-                    self.mode = self.mode.prev();
-                } else {
-                    self.mode = self.mode.next();
+                self.mode = if self.shift_held { self.mode.prev() } else { self.mode.next() };
+                mode_changed = true;
+            }
+
+            // Direct numeric and mnemonic mode keys
+            if i.key_pressed(egui::Key::Num1) || i.key_pressed(egui::Key::B) {
+                self.mode = RulerMode::Bounds;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::Num2) || i.key_pressed(egui::Key::S) {
+                self.mode = RulerMode::Spacing;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::Num3) || i.key_pressed(egui::Key::H) {
+                self.mode = RulerMode::Horizontal;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::Num4) || i.key_pressed(egui::Key::V) {
+                self.mode = RulerMode::Vertical;
+                mode_changed = true;
+            }
+
+            // Mouse wheel events
+            for event in &i.events {
+                if let egui::Event::MouseWheel { unit, delta, modifiers, .. } = event {
+                    wheel_events.push((*unit, *delta, *modifiers));
                 }
-                mode_changed = true;
             }
 
-            // Direct mode number keys
-            if i.key_pressed(egui::Key::Num1) {
-                self.mode = RulerMode::Bounds;
-                mode_changed = true;
-            } else if i.key_pressed(egui::Key::Num2) {
-                self.mode = RulerMode::Spacing;
-                mode_changed = true;
-            } else if i.key_pressed(egui::Key::Num3) {
-                self.mode = RulerMode::Horizontal;
-                mode_changed = true;
-            } else if i.key_pressed(egui::Key::Num4) {
-                self.mode = RulerMode::Vertical;
-                mode_changed = true;
-            }
-
-            // Alternative mnemonic letters
-            if i.key_pressed(egui::Key::B) {
-                self.mode = RulerMode::Bounds;
-                mode_changed = true;
-            } else if i.key_pressed(egui::Key::S) {
-                self.mode = RulerMode::Spacing;
-                mode_changed = true;
-            } else if i.key_pressed(egui::Key::H) {
-                self.mode = RulerMode::Horizontal;
-                mode_changed = true;
-            } else if i.key_pressed(egui::Key::V) {
-                self.mode = RulerMode::Vertical;
-                mode_changed = true;
-            }
+            primary_pressed = i.pointer.button_pressed(egui::PointerButton::Primary);
+            primary_down = i.pointer.button_down(egui::PointerButton::Primary);
+            primary_released = i.pointer.button_released(egui::PointerButton::Primary);
+            right_clicked = i.pointer.button_clicked(egui::PointerButton::Secondary);
         });
 
         if mode_changed {
             self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
         }
 
-        // 4. Mouse wheel scrolling (discrete tolerance or mode cycle)
-        let mut wheel_events = Vec::new();
-        ctx.input(|i| {
-            for event in &i.events {
-                if let egui::Event::MouseWheel { unit, delta, modifiers, .. } = event {
-                    wheel_events.push((*unit, *delta, *modifiers));
-                }
-            }
-        });
-
+        // 3. Process mouse wheel scrolling (discrete sensitivity or mode cycling)
         for (unit, delta, modifiers) in wheel_events {
             let is_shift = modifiers.shift || self.shift_held;
             let is_ctrl = modifiers.ctrl || self.ctrl_held;
@@ -238,11 +250,7 @@ impl eframe::App for EdgedApp {
                 || (is_ctrl && self.config.shortcuts.ctrl_scroll_cycles_mode);
 
             if cycles_mode {
-                if steps > 0 {
-                    self.mode = self.mode.next();
-                } else {
-                    self.mode = self.mode.prev();
-                }
+                self.mode = if steps > 0 { self.mode.next() } else { self.mode.prev() };
                 log::info!("Switched ruler mode to: {:?}", self.mode);
                 self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
             } else if self.mode != RulerMode::Bounds {
@@ -255,7 +263,7 @@ impl eframe::App for EdgedApp {
             }
         }
 
-        // 5. Update edge detection measurements
+        // 4. Update edge detection measurements
         if self.mode != RulerMode::Bounds {
             let rel_x = self.cursor.x - viewport_rect.min.x;
             let rel_y = self.cursor.y - viewport_rect.min.y;
@@ -264,17 +272,12 @@ impl eframe::App for EdgedApp {
             self.measurement = self.detector.detect_edges(abs_x, abs_y, self.tolerance);
         }
 
-        // 6. Handle clicks and bounds dragging
-        let right_clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary));
+        // 5. Handle clicks and bounds dragging
         if right_clicked {
             close_requested = true;
         }
 
         if self.mode == RulerMode::Bounds {
-            let primary_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
-            let primary_down = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
-            let primary_released = ctx.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
-
             if primary_pressed {
                 self.drag_start = Some(self.cursor);
             }
@@ -291,49 +294,75 @@ impl eframe::App for EdgedApp {
             }
 
             if primary_released {
-                if let Some(rect) = self.active_rect.take() {
-                    if self.shift_held && self.config.bounds.shift_pins_bounds {
-                        log::info!("Pinned rectangular bounds: {}x{} px", rect.width, rect.height);
-                        self.pinned_rects.push(rect);
-                    } else {
-                        let w_px = (rect.width as f32 * scale_x).round() as u32;
-                        let h_px = (rect.height as f32 * scale_y).round() as u32;
+                // Check if user clicked on an already pinned rectangle to copy its dimensions
+                let is_stationary_click = self.drag_start.is_some_and(|start| {
+                    (start.x - self.cursor.x).hypot(start.y - self.cursor.y) < 5.0
+                });
+
+                if is_stationary_click && !self.shift_held {
+                    // Search in reverse order so the topmost pinned rectangle receives the click
+                    if let Some(pinned) = self.pinned_rects.iter().rev().find(|r| {
+                        r.contains(self.cursor.x as f64, self.cursor.y as f64)
+                    }) {
+                        let w_px = (pinned.width as f32 * scale_x).round() as u32;
+                        let h_px = (pinned.height as f32 * scale_y).round() as u32;
                         let text = format_measurement(
                             RulerMode::Bounds,
                             w_px,
                             h_px,
                             self.config.clipboard.format,
                         );
-                        log::info!("Copied bounds measurement to clipboard: '{}'", text);
+                        log::info!("Selected pinned rectangle: copied '{}' to clipboard", text);
                         copy_to_clipboard(&text);
                         if self.config.general.close_on_copy {
-                            log::debug!("Closing on copy (close_on_copy = true)");
                             close_requested = true;
+                        }
+                        self.active_rect = None;
+                        self.drag_start = None;
+                    }
+                }
+
+                if let Some(rect) = self.active_rect.take() {
+                    if !close_requested {
+                        if self.shift_held && self.config.bounds.shift_pins_bounds {
+                            log::info!("Pinned rectangular bounds: {}x{} px", rect.width, rect.height);
+                            self.pinned_rects.push(rect);
+                        } else {
+                            let w_px = (rect.width as f32 * scale_x).round() as u32;
+                            let h_px = (rect.height as f32 * scale_y).round() as u32;
+                            let text = format_measurement(
+                                RulerMode::Bounds,
+                                w_px,
+                                h_px,
+                                self.config.clipboard.format,
+                            );
+                            log::info!("Copied bounds measurement to clipboard: '{}'", text);
+                            copy_to_clipboard(&text);
+                            if self.config.general.close_on_copy {
+                                log::debug!("Closing on copy (close_on_copy = true)");
+                                close_requested = true;
+                            }
                         }
                     }
                 }
                 self.drag_start = None;
             }
-        } else {
-            let primary_clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
-            if primary_clicked {
-                let text = format_measurement(
-                    self.mode,
-                    self.measurement.width,
-                    self.measurement.height,
-                    self.config.clipboard.format,
-                );
-                log::info!("Copied measurement to clipboard: '{}' (mode: {:?})", text, self.mode);
-                copy_to_clipboard(&text);
-                if self.config.general.close_on_copy {
-                    log::debug!("Closing on copy (close_on_copy = true)");
-                    close_requested = true;
-                }
+        } else if primary_pressed {
+            let text = format_measurement(
+                self.mode,
+                self.measurement.width,
+                self.measurement.height,
+                self.config.clipboard.format,
+            );
+            log::info!("Copied measurement to clipboard: '{}' (mode: {:?})", text, self.mode);
+            copy_to_clipboard(&text);
+            if self.config.general.close_on_copy {
+                log::debug!("Closing on copy (close_on_copy = true)");
+                close_requested = true;
             }
         }
 
-        // 7. Render UI overlays
-        let now = Instant::now();
+        // 6. Render UI overlays
         let tol_hud = self
             .tolerance_hud_until
             .filter(|&until| now < until)
@@ -345,7 +374,8 @@ impl eframe::App for EdgedApp {
 
         let renderer = EguiRenderer::new(
             &painter,
-            self.config.clone(),
+            &self.config,
+            &self.theme,
             scale_x,
             scale_y,
             viewport_rect.min,

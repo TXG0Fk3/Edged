@@ -12,6 +12,17 @@ pub enum DefaultMode {
     Vertical,
 }
 
+impl From<DefaultMode> for crate::ruler::RulerMode {
+    fn from(mode: DefaultMode) -> Self {
+        match mode {
+            DefaultMode::Bounds => crate::ruler::RulerMode::Bounds,
+            DefaultMode::Spacing => crate::ruler::RulerMode::Spacing,
+            DefaultMode::Horizontal => crate::ruler::RulerMode::Horizontal,
+            DefaultMode::Vertical => crate::ruler::RulerMode::Vertical,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureMethod {
@@ -623,5 +634,5 @@ pub fn parse_color(color_str: &str) -> (f64, f64, f64, f64) {
 }
 
 fn log_info(msg: &str) {
-    println!("[edged] {}", msg);
+    log::info!("{}", msg);
 }

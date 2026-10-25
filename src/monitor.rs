@@ -301,8 +301,8 @@ pub fn crop_image_if_needed(
     if all_monitors.len() <= 1 {
         // If image is larger than the physical monitor, crop the top-left visible area
         if image.width() > target_phys_w && image.height() >= target_phys_h {
-            println!(
-                "[edged] Single-monitor portal: trimming buffer padding from {}x{} to target {}x{}",
+            log::info!(
+                "Single-monitor portal: trimming buffer padding from {}x{} to target {}x{}",
                 image.width(), image.height(), target_phys_w, target_phys_h
             );
             return image::imageops::crop_imm(&image, 0, 0, target_phys_w, target_phys_h).to_image();
@@ -352,8 +352,8 @@ pub fn crop_image_if_needed(
         return image;
     }
 
-    println!(
-        "[edged] Multi-monitor: cropped screenshot to target monitor '{}' ({}x{} at +{},+{})",
+    log::info!(
+        "Multi-monitor: cropped screenshot to target monitor '{}' ({}x{} at +{},+{})",
         target.name, final_w, final_h, crop_x, crop_y
     );
 

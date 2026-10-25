@@ -56,3 +56,20 @@ pub struct Cli {
     #[arg(long)]
     pub clear_logs: bool,
 }
+
+impl Cli {
+    /// Returns the explicitly requested RulerMode if one of the mode flags was specified
+    pub fn requested_mode(&self) -> Option<crate::ruler::RulerMode> {
+        if self.bounds {
+            Some(crate::ruler::RulerMode::Bounds)
+        } else if self.spacing {
+            Some(crate::ruler::RulerMode::Spacing)
+        } else if self.horizontal {
+            Some(crate::ruler::RulerMode::Horizontal)
+        } else if self.vertical {
+            Some(crate::ruler::RulerMode::Vertical)
+        } else {
+            None
+        }
+    }
+}

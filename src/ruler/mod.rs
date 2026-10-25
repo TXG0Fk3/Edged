@@ -97,6 +97,7 @@ impl EdgeDetector {
             return EdgeMeasurement::empty(cx, cy);
         }
 
+        // Clamp cursor coordinates to image boundaries to prevent out-of-bounds indexing
         let cx = cx.min(self.width - 1);
         let cy = cy.min(self.height - 1);
 
@@ -108,88 +109,67 @@ impl EdgeDetector {
         let base_g = raw[base_idx + 1] as i32;
         let base_b = raw[base_idx + 2] as i32;
 
-        // Tolerance percentage converted to squared Euclidean distance threshold
-        // Maximum Euclidean distance in RGB space = sqrt(255^2 * 3) ~= 441.67
-        let tol_factor = (tolerance_pct.clamp(1, 100) as f64) / 100.0;
-        let max_dist = 441.6729559300637;
-        let thresh_dist = tol_factor * max_dist;
-        let thresh_sq = (thresh_dist * thresh_dist) as i32;
+        // WHY squared distance threshold:
+        // Maximum Euclidean distance in RGB color space is sqrt(255^2 * 3) ~= 441.6729559300637.
+        // Squaring both sides: threshold^2 = (tolerance_pct / 100)^2 * (255^2 * 3) = (tolerance_pct / 100)^2 * 195075.
+        // Operating entirely in squared Euclidean space eliminates costly `sqrt()` calls on every marched pixel.
+        let tol_fraction = (tolerance_pct.clamp(1, 100) as f64) / 100.0;
+        let thresh_sq = (tol_fraction * tol_fraction * 195_075.0) as i32;
 
-        // March LEFT
+        // Inlined helper to compute squared Euclidean RGB distance from base pixel
+        #[inline(always)]
+        fn color_diff_sq(raw: &[u8], idx: usize, base_r: i32, base_g: i32, base_b: i32) -> i32 {
+            let dr = raw[idx] as i32 - base_r;
+            let dg = raw[idx + 1] as i32 - base_g;
+            let db = raw[idx + 2] as i32 - base_b;
+            dr * dr + dg * dg + db * db
+        }
+
+        // WHY row_offset / col_offset hoisting:
+        // Calculating `(cy * stride)` or `(cx * 4)` once outside each loop saves millions of redundant
+        // integer multiplications per second across rapid cursor movements.
+        let row_offset = (cy as usize) * stride;
+        let col_offset = (cx as usize) * 4;
+
+        // March LEFT along row `cy`
         let mut left_x = cx;
         while left_x > 0 {
             let next_x = left_x - 1;
-            let idx = (cy as usize) * stride + (next_x as usize) * 4;
-            let r = raw[idx] as i32;
-            let g = raw[idx + 1] as i32;
-            let b = raw[idx + 2] as i32;
-
-            let dr = r - base_r;
-            let dg = g - base_g;
-            let db = b - base_b;
-            let dist_sq = dr * dr + dg * dg + db * db;
-
-            if dist_sq > thresh_sq {
+            let idx = row_offset + (next_x as usize) * 4;
+            if color_diff_sq(raw, idx, base_r, base_g, base_b) > thresh_sq {
                 break;
             }
             left_x = next_x;
         }
 
-        // March RIGHT
+        // March RIGHT along row `cy`
         let mut right_x = cx;
         while right_x + 1 < self.width {
             let next_x = right_x + 1;
-            let idx = (cy as usize) * stride + (next_x as usize) * 4;
-            let r = raw[idx] as i32;
-            let g = raw[idx + 1] as i32;
-            let b = raw[idx + 2] as i32;
-
-            let dr = r - base_r;
-            let dg = g - base_g;
-            let db = b - base_b;
-            let dist_sq = dr * dr + dg * dg + db * db;
-
-            if dist_sq > thresh_sq {
+            let idx = row_offset + (next_x as usize) * 4;
+            if color_diff_sq(raw, idx, base_r, base_g, base_b) > thresh_sq {
                 break;
             }
             right_x = next_x;
         }
 
-        // March UP
+        // March UP along column `cx`
         let mut top_y = cy;
         while top_y > 0 {
             let next_y = top_y - 1;
-            let idx = (next_y as usize) * stride + (cx as usize) * 4;
-            let r = raw[idx] as i32;
-            let g = raw[idx + 1] as i32;
-            let b = raw[idx + 2] as i32;
-
-            let dr = r - base_r;
-            let dg = g - base_g;
-            let db = b - base_b;
-            let dist_sq = dr * dr + dg * dg + db * db;
-
-            if dist_sq > thresh_sq {
+            let idx = (next_y as usize) * stride + col_offset;
+            if color_diff_sq(raw, idx, base_r, base_g, base_b) > thresh_sq {
                 break;
             }
             top_y = next_y;
         }
 
-        // March DOWN
+        // March DOWN along column `cx`
         let mut bottom_y = cy;
         while bottom_y + 1 < self.height {
             let next_y = bottom_y + 1;
-            let idx = (next_y as usize) * stride + (cx as usize) * 4;
-            let r = raw[idx] as i32;
-            let g = raw[idx + 1] as i32;
-            let b = raw[idx + 2] as i32;
-
-            let dr = r - base_r;
-            let dg = g - base_g;
-            let db = b - base_b;
-            let dist_sq = dr * dr + dg * dg + db * db;
-
-            if dist_sq > thresh_sq {
+            let idx = (next_y as usize) * stride + col_offset;
+            if color_diff_sq(raw, idx, base_r, base_g, base_b) > thresh_sq {
                 break;
             }
             bottom_y = next_y;

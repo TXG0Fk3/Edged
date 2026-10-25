@@ -792,3 +792,47 @@ fn test_ruler_mode_names() {
     assert_eq!(RulerMode::Horizontal.name(), "Horizontal");
     assert_eq!(RulerMode::Vertical.name(), "Vertical");
 }
+
+#[test]
+fn test_default_mode_into_ruler_mode() {
+    use edged::config::DefaultMode;
+    assert_eq!(RulerMode::from(DefaultMode::Bounds), RulerMode::Bounds);
+    assert_eq!(RulerMode::from(DefaultMode::Spacing), RulerMode::Spacing);
+    assert_eq!(RulerMode::from(DefaultMode::Horizontal), RulerMode::Horizontal);
+    assert_eq!(RulerMode::from(DefaultMode::Vertical), RulerMode::Vertical);
+}
+
+#[test]
+fn test_cli_requested_mode() {
+    use clap::Parser;
+    use edged::cli::Cli;
+
+    let cli_bounds = Cli::parse_from(["edged", "--bounds"]);
+    assert_eq!(cli_bounds.requested_mode(), Some(RulerMode::Bounds));
+
+    let cli_spacing = Cli::parse_from(["edged", "--spacing"]);
+    assert_eq!(cli_spacing.requested_mode(), Some(RulerMode::Spacing));
+
+    let cli_horizontal = Cli::parse_from(["edged", "--horizontal"]);
+    assert_eq!(cli_horizontal.requested_mode(), Some(RulerMode::Horizontal));
+
+    let cli_vertical = Cli::parse_from(["edged", "--vertical"]);
+    assert_eq!(cli_vertical.requested_mode(), Some(RulerMode::Vertical));
+
+    let cli_none = Cli::parse_from(["edged"]);
+    assert_eq!(cli_none.requested_mode(), None);
+}
+
+#[test]
+fn test_render_theme_from_config() {
+    use edged::ui::renderer::RenderTheme;
+    let cfg: Config = toml::from_str(DEFAULT_CONFIG_COMMENTED).expect("parse default config");
+    let theme = RenderTheme::from_config(&cfg);
+
+    // Verify parsed colors are valid non-transparent colors
+    assert!(theme.line_color.a() > 0);
+    assert!(theme.shadow_color.a() > 0);
+    assert!(theme.bounds_border_color.a() > 0);
+    assert!(theme.badge_bg_color.a() > 0);
+    assert!(theme.badge_text_color.a() > 0);
+}

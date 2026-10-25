@@ -2,7 +2,6 @@ use crate::config::{parse_color, Config, SecondaryUnit};
 use crate::ruler::bounds::Rect;
 use crate::ruler::{EdgeMeasurement, RulerMode};
 use egui::{Color32, FontId, Pos2, Rect as EguiRect, Stroke, StrokeKind, Vec2};
-use std::sync::Arc;
 
 pub fn to_egui_color(color_str: &str) -> Color32 {
     let (r, g, b, a) = parse_color(color_str);
@@ -14,9 +13,53 @@ pub fn to_egui_color(color_str: &str) -> Color32 {
     )
 }
 
+/// Pre-parsed color palette cached per application session.
+///
+/// WHY RenderTheme:
+/// Calling `to_egui_color` directly inside `ui()` or `draw_badge()` reparses hex/rgba strings
+/// dozens of times per frame, invoking string slicing and number parsing repeatedly.
+/// Pre-parsing theme colors into `egui::Color32` upfront yields zero string allocations and zero
+/// color parsing overhead during active rendering.
+#[derive(Debug, Clone)]
+pub struct RenderTheme {
+    pub line_color: Color32,
+    pub shadow_color: Color32,
+    pub bounds_border_color: Color32,
+    pub bounds_fill_color: Color32,
+    pub bounds_pinned_fill_color: Color32,
+    pub badge_bg_color: Color32,
+    pub badge_text_color: Color32,
+    pub badge_border_color: Color32,
+    pub crosshair_color: Color32,
+}
+
+impl RenderTheme {
+    pub fn from_config(config: &Config) -> Self {
+        let fill = to_egui_color(&config.appearance.bounds_fill_color);
+        let pinned_fill = Color32::from_rgba_unmultiplied(
+            fill.r(),
+            fill.g(),
+            fill.b(),
+            (fill.a() as f32 * 0.7).round() as u8,
+        );
+        Self {
+            line_color: to_egui_color(&config.appearance.line_color),
+            shadow_color: to_egui_color(&config.appearance.line_shadow_color),
+            bounds_border_color: to_egui_color(&config.appearance.bounds_border_color),
+            bounds_fill_color: fill,
+            bounds_pinned_fill_color: pinned_fill,
+            badge_bg_color: to_egui_color(&config.appearance.label_bg_color),
+            badge_text_color: to_egui_color(&config.appearance.label_text_color),
+            badge_border_color: to_egui_color(&config.appearance.label_border_color),
+            crosshair_color: Color32::from_rgb(240, 240, 240),
+        }
+    }
+}
+
 pub struct EguiRenderer<'a> {
     pub painter: &'a egui::Painter,
-    pub config: Arc<Config>,
+    pub config: &'a Config,
+    pub theme: &'a RenderTheme,
     pub scale_x: f32,
     pub scale_y: f32,
     pub viewport_origin: Pos2,
@@ -25,7 +68,8 @@ pub struct EguiRenderer<'a> {
 impl<'a> EguiRenderer<'a> {
     pub fn new(
         painter: &'a egui::Painter,
-        config: Arc<Config>,
+        config: &'a Config,
+        theme: &'a RenderTheme,
         scale_x: f32,
         scale_y: f32,
         viewport_origin: Pos2,
@@ -33,6 +77,7 @@ impl<'a> EguiRenderer<'a> {
         Self {
             painter,
             config,
+            theme,
             scale_x,
             scale_y,
             viewport_origin,
@@ -59,11 +104,8 @@ impl<'a> EguiRenderer<'a> {
         let draw_feet = self.config.ruler.draw_feet;
         let line_thickness = self.config.ruler.line_thickness as f32;
 
-        let line_color = to_egui_color(&self.config.appearance.line_color);
-        let shadow_color = to_egui_color(&self.config.appearance.line_shadow_color);
-
-        let stroke_shadow = Stroke::new(line_thickness + 2.0, shadow_color);
-        let stroke_line = Stroke::new(line_thickness, line_color);
+        let stroke_shadow = Stroke::new(line_thickness + 2.0, self.theme.shadow_color);
+        let stroke_line = Stroke::new(line_thickness, self.theme.line_color);
 
         // 1. Horizontal line
         if mode == RulerMode::Spacing || mode == RulerMode::Horizontal {
@@ -146,8 +188,8 @@ impl<'a> EguiRenderer<'a> {
         // 3. Subtle cursor crosshair
         if self.config.ruler.draw_crosshair {
             let arm = 7.0;
-            let ch_shadow = Stroke::new(3.0, shadow_color);
-            let ch_primary = Stroke::new(1.5, Color32::from_rgb(240, 240, 240));
+            let ch_shadow = Stroke::new(3.0, self.theme.shadow_color);
+            let ch_primary = Stroke::new(1.5, self.theme.crosshair_color);
 
             self.painter.line_segment([Pos2::new(cx - arm, cy), Pos2::new(cx + arm, cy)], ch_shadow);
             self.painter.line_segment([Pos2::new(cx, cy - arm), Pos2::new(cx, cy + arm)], ch_shadow);
@@ -176,15 +218,20 @@ impl<'a> EguiRenderer<'a> {
         mode_hud: Option<RulerMode>,
     ) {
         let border_thickness = self.config.bounds.border_thickness as f32;
-        let border_color = to_egui_color(&self.config.appearance.bounds_border_color);
-        let fill_color = to_egui_color(&self.config.appearance.bounds_fill_color);
-        let shadow_color = to_egui_color(&self.config.appearance.line_shadow_color);
 
         // Render previously pinned rectangles
         for r in pinned {
-            let egui_r = EguiRect::from_min_size(Pos2::new(r.x as f32, r.y as f32), Vec2::new(r.width as f32, r.height as f32));
-            self.painter.rect_filled(egui_r, 0.0, Color32::from_rgba_unmultiplied(fill_color.r(), fill_color.g(), fill_color.b(), (fill_color.a() as f32 * 0.7) as u8));
-            self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness, border_color), StrokeKind::Middle);
+            let egui_r = EguiRect::from_min_size(
+                Pos2::new(r.x as f32, r.y as f32),
+                Vec2::new(r.width as f32, r.height as f32),
+            );
+            self.painter.rect_filled(egui_r, 0.0, self.theme.bounds_pinned_fill_color);
+            self.painter.rect_stroke(
+                egui_r,
+                0.0,
+                Stroke::new(border_thickness, self.theme.bounds_border_color),
+                StrokeKind::Middle,
+            );
 
             let w_px = (r.width as f32 * self.scale_x).round() as u32;
             let h_px = (r.height as f32 * self.scale_y).round() as u32;
@@ -195,10 +242,23 @@ impl<'a> EguiRenderer<'a> {
 
         // Render active rectangle being drawn
         if let Some(r) = active {
-            let egui_r = EguiRect::from_min_size(Pos2::new(r.x as f32, r.y as f32), Vec2::new(r.width as f32, r.height as f32));
-            self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness + 2.0, shadow_color), StrokeKind::Middle);
-            self.painter.rect_filled(egui_r, 0.0, fill_color);
-            self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness, border_color), StrokeKind::Middle);
+            let egui_r = EguiRect::from_min_size(
+                Pos2::new(r.x as f32, r.y as f32),
+                Vec2::new(r.width as f32, r.height as f32),
+            );
+            self.painter.rect_stroke(
+                egui_r,
+                0.0,
+                Stroke::new(border_thickness + 2.0, self.theme.shadow_color),
+                StrokeKind::Middle,
+            );
+            self.painter.rect_filled(egui_r, 0.0, self.theme.bounds_fill_color);
+            self.painter.rect_stroke(
+                egui_r,
+                0.0,
+                Stroke::new(border_thickness, self.theme.bounds_border_color),
+                StrokeKind::Middle,
+            );
 
             let w_px = (r.width as f32 * self.scale_x).round() as u32;
             let h_px = (r.height as f32 * self.scale_y).round() as u32;
@@ -207,8 +267,8 @@ impl<'a> EguiRenderer<'a> {
             self.draw_badge(Pos2::new(cx as f32, cy as f32), &label);
         } else if self.config.ruler.draw_crosshair {
             let arm = 7.0;
-            let ch_shadow = Stroke::new(3.0, shadow_color);
-            let ch_primary = Stroke::new(1.5, Color32::from_rgb(240, 240, 240));
+            let ch_shadow = Stroke::new(3.0, self.theme.shadow_color);
+            let ch_primary = Stroke::new(1.5, self.theme.crosshair_color);
 
             self.painter.line_segment([Pos2::new(cursor.x - arm, cursor.y), Pos2::new(cursor.x + arm, cursor.y)], ch_shadow);
             self.painter.line_segment([Pos2::new(cursor.x, cursor.y - arm), Pos2::new(cursor.x, cursor.y + arm)], ch_shadow);
@@ -233,19 +293,15 @@ impl<'a> EguiRenderer<'a> {
         let pad_y = self.config.appearance.label_padding_y as f32;
         let radius = self.config.appearance.label_border_radius as f32;
 
-        let text_color = to_egui_color(&self.config.appearance.label_text_color);
-        let bg_color = to_egui_color(&self.config.appearance.label_bg_color);
-        let border_color = to_egui_color(&self.config.appearance.label_border_color);
-
-        let galley = self.painter.layout_no_wrap(text.to_string(), font_id, text_color);
+        let galley = self.painter.layout_no_wrap(text.to_string(), font_id, self.theme.badge_text_color);
         let badge_w = galley.size().x + pad_x * 2.0;
         let badge_h = galley.size().y + pad_y * 2.0;
 
         let badge_rect = EguiRect::from_center_size(center, Vec2::new(badge_w, badge_h));
 
-        self.painter.rect_filled(badge_rect, radius, bg_color);
-        self.painter.rect_stroke(badge_rect, radius, Stroke::new(1.0, border_color), StrokeKind::Middle);
-        self.painter.galley(Pos2::new(badge_rect.min.x + pad_x, badge_rect.min.y + pad_y), galley, text_color);
+        self.painter.rect_filled(badge_rect, radius, self.theme.badge_bg_color);
+        self.painter.rect_stroke(badge_rect, radius, Stroke::new(1.0, self.theme.badge_border_color), StrokeKind::Middle);
+        self.painter.galley(Pos2::new(badge_rect.min.x + pad_x, badge_rect.min.y + pad_y), galley, self.theme.badge_text_color);
     }
 
     /// Renders dynamic tolerance adjustment HUD

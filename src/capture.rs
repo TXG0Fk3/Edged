@@ -144,6 +144,25 @@ pub fn capture_via_hyprshot(target_monitor: Option<&MonitorInfo>) -> Result<Rgba
 
 /// Captures the screen using the `grim` utility (Wayland screencopy)
 pub fn capture_via_grim(target_monitor: Option<&MonitorInfo>) -> Result<RgbaImage, CaptureError> {
+    // WHY memory streaming first:
+    // Capturing via stdout ("-") streams compressed PNG bytes directly through a pipe into RAM,
+    // avoiding disk write/read cycles, eliminating I/O stalls, and leaving zero temporary files behind.
+    let mut mem_cmd = Command::new("grim");
+    mem_cmd.arg("-t").arg("png");
+    if let Some(monitor) = target_monitor {
+        mem_cmd.arg("-o").arg(&monitor.name);
+    }
+    mem_cmd.arg("-");
+
+    if let Ok(out) = mem_cmd.output() {
+        if out.status.success() && !out.stdout.is_empty() {
+            if let Ok(img) = image::load_from_memory(&out.stdout) {
+                return Ok(img.to_rgba8());
+            }
+        }
+    }
+
+    // Disk fallback if stdout streaming failed or wasn't supported
     let temp_path = std::env::temp_dir().join(format!("edged_grim_{}.png", std::process::id()));
 
     // If a target monitor is specified, try targeting its output connector directly first

@@ -33,11 +33,15 @@ pub fn copy_to_clipboard(text: &str) {
         let _ = clipboard.set_text(text);
     }
 
-    // 2. Spawn `wl-copy` fallback to ensure persistence across Wayland compositors
+    // WHY wl-copy fallback:
+    // On Wayland, when a process terminates, its clipboard data-source is destroyed by the compositor
+    // unless an external clipboard manager takes ownership. Because Edged follows an immediate one-shot
+    // termination model (exits instantly on click by default), spawning `wl-copy` ensures the copied
+    // measurement text survives process exit and remains in the system clipboard.
     let _ = Command::new("wl-copy")
         .arg("--")
         .arg(text)
         .spawn();
 
-    println!("[edged] Copied to clipboard: {}", text);
+    log::info!("Copied to clipboard: '{}'", text);
 }

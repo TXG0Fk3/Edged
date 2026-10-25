@@ -75,7 +75,7 @@ Edged/
 │       ├── mod.rs                 # OverlayApp state, hotkeys, input handling, HUD timers
 │       └── renderer.rs            # egui rendering for crosshairs, badges, feet, and pinned boxes
 ├── tests/
-│   └── ruler_tests.rs             # Unit and integration test suite (41 tests)
+│   └── ruler_tests.rs             # Unit and integration test suite (44 tests)
 ├── Cargo.toml                     # Manifest, dependencies, and packaging metadata
 ├── config.example.toml            # Fully commented reference configuration
 ├── install.sh                     # Automated user/system installer script
