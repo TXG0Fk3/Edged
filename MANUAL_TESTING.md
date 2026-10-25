@@ -266,6 +266,30 @@ echo "Compositor: $XDG_CURRENT_DESKTOP | Session: $XDG_SESSION_TYPE | Display: $
 
 ---
 
+### Test Suite 11: Nix Flake, Home Manager & NixOS Packaging
+
+#### Case 11.1: Direct Nix Run Execution
+- **Steps**: Run `nix run github:TXG0Fk3/Edged` on a NixOS or Nix-enabled system.
+- **Expected Result**:
+  - The precompiled binary package is fetched without compiling locally.
+  - Wayland OpenGL overlay launches smoothly without missing `.so` library errors.
+
+#### Case 11.2: Home Manager Module Configuration
+- **Steps**:
+  1. Add `programs.edged.enable = true` and `programs.edged.settings.general.default_mode = "bounds"` to home-manager configuration.
+  2. Run `home-manager switch`.
+  3. Inspect `~/.config/edged/config.toml`.
+- **Expected Result**: File is generated with `default_mode = "bounds"` and Edged defaults to bounds mode on startup.
+
+#### Case 11.3: NixOS System-Wide Module Configuration
+- **Steps**:
+  1. Add `programs.edged.enable = true` to `configuration.nix`.
+  2. Run `nixos-rebuild switch`.
+  3. Verify `/etc/xdg/edged/config.toml` presence if settings are defined.
+- **Expected Result**: Edged is accessible system-wide in `PATH`.
+
+---
+
 ## 📋 AI Report Checklist (Copy & Paste to AI)
 
 > 💡 **Instructions for User**: Copy the checklist below, check the boxes `[x]` for items that worked and leave `[ ]` for items that failed. Paste it into the conversation with the AI along with any notes.
@@ -332,6 +356,11 @@ echo "Compositor: $XDG_CURRENT_DESKTOP | Session: $XDG_SESSION_TYPE | Display: $
   - [ ] 10.1 `edged --view-logs` outputs formatted log entries
   - [ ] 10.2 Logs older than 4 days are automatically pruned
   - [ ] 10.3 `edged --clear-logs` clears the log directory cleanly
+
+- [ ] **11. Nix Flake & Modules**
+  - [ ] 11.1 `nix run github:TXG0Fk3/Edged` runs without compiling from source
+  - [ ] 11.2 Home Manager module writes settings to `~/.config/edged/config.toml`
+  - [ ] 11.3 NixOS module provides system-wide package and config integration
 
 ---
 

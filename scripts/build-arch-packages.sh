@@ -44,6 +44,7 @@ cp README.md "${TAR_DIR}/"
 cp LICENSE "${TAR_DIR}/"
 cp assets/* "${TAR_DIR}/assets/"
 tar -czvf "dist/edged-${VERSION}-x86_64-linux.tar.gz" "${TAR_DIR}"
+cp "dist/edged-${VERSION}-x86_64-linux.tar.gz" "dist/edged-x86_64-linux.tar.gz"
 rm -rf "${TAR_DIR}"
 
 # 5. Arch Linux Native Package (.pkg.tar.zst via canonical makepkg)

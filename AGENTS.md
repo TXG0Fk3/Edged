@@ -58,6 +58,13 @@ Edged/
 │       ├── ci.yml                 # PR and Push test runner (Arch Linux container)
 │       └── release.yml            # Multi-distro release packager (gated by test job)
 ├── assets/                        # Application icons (SVG and 256x256 PNG)
+├── nix/                           # Nix packaging and module definitions
+│   ├── modules/
+│   │   ├── home-manager.nix       # Home Manager module (programs.edged.settings TOML generation)
+│   │   └── nixos.nix              # NixOS module (/etc/xdg/edged/config.toml system configuration)
+│   ├── package.nix                # Derivation wrapping precompiled binary (autoPatchelfHook + wrapProgram)
+│   ├── sources.json               # Auto-updated release artifact metadata and SHA-256 hash
+│   └── update.sh                  # Interactive/automated script to update sources.json to latest release
 ├── scripts/
 │   └── build-arch-packages.sh     # Comprehensive packaging script (.pkg.tar.zst, .deb, .rpm, .AppImage)
 ├── src/
@@ -75,9 +82,10 @@ Edged/
 │       ├── mod.rs                 # OverlayApp state, hotkeys, input handling, HUD timers
 │       └── renderer.rs            # egui rendering for crosshairs, badges, feet, and pinned boxes
 ├── tests/
-│   └── ruler_tests.rs             # Unit and integration test suite (44 tests)
+│   └── ruler_tests.rs             # Unit and integration test suite (46 tests)
 ├── Cargo.toml                     # Manifest, dependencies, and packaging metadata
 ├── config.example.toml            # Fully commented reference configuration
+├── flake.nix                      # Nix Flake exporting packages, apps, overlays, and modules
 ├── install.sh                     # Automated user/system installer script
 ├── MANUAL_TESTING.md              # Hardware/compositor manual QA test plan & checklist
 └── README.md                      # Public documentation and cheatsheet
@@ -122,6 +130,21 @@ Edged/
   - `edged --log-dir`: Prints absolute log folder path.
   - `edged --clear-logs`: Wipes all Edged logs on demand.
   - `edged --log-level <LEVEL>`: Overrides verbosity (`trace`, `debug`, `info`, `warn`, `error`, `off`).
+
+### Nix Flake & Modular Distribution (`flake.nix` & `nix/`)
+- **Zero Local Compilation**: The Nix package derivation (`nix/package.nix`) consumes the official precompiled release tarball (`edged-${VERSION}-x86_64-linux.tar.gz`), eliminating compilation overhead on user machines.
+- **Dynamic Dependency Patching**:
+  - `autoPatchelfHook` patches ELF binaries against standard libraries.
+  - `wrapProgram` prefixes runtime `LD_LIBRARY_PATH` with `libGL`, `libxkbcommon`, `wayland`, and `vulkan-loader` (required by egui/eframe/glow on Wayland).
+  - `wrapProgram` prefixes runtime `PATH` with `grim` and `wl-clipboard` (`wl-copy`) for out-of-the-box screenshot and clipboard functionality.
+- **First-Class Configuration Modules**:
+  - `nix/modules/home-manager.nix`: Implements `programs.edged.enable` and `programs.edged.settings`, generating `~/.config/edged/config.toml` via `pkgs.formats.toml`.
+  - `nix/modules/nixos.nix`: Implements system-wide `programs.edged`, generating `/etc/xdg/edged/config.toml`.
+  - Config loader in `src/config.rs` natively searches `XDG_CONFIG_DIRS` (and `/etc/xdg/edged/config.toml`) when no user config exists.
+- **Fully Automated Flake Self-Updating**:
+  - `.github/workflows/release.yml` includes an `Auto-Update Nix Flake Sources` step right after publishing releases.
+  - Computes the SHA-256 hash of the generated release tarball, writes `nix/sources.json`, and commits with `[skip ci]`.
+  - `nix/update.sh` provides an interactive/standalone updater for developers or automated cron jobs.
 
 ---
 

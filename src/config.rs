@@ -53,18 +53,12 @@ pub enum CopyFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GeneralConfig {
     pub default_mode: DefaultMode,
-    #[serde(default)]
     pub capture_method: CaptureMethod,
-    #[serde(default)]
     pub custom_capture_command: String,
-    #[serde(default = "default_close_on_copy")]
     pub close_on_copy: bool,
-}
-
-fn default_close_on_copy() -> bool {
-    true
 }
 
 impl Default for GeneralConfig {
@@ -79,6 +73,7 @@ impl Default for GeneralConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CaptureConfig {
     pub method: CaptureMethod,
     pub command: String,
@@ -96,6 +91,7 @@ impl Default for CaptureConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ShortcutsConfig {
     pub cycle_mode_key: String,
     pub mode_bounds_key: String,
@@ -129,6 +125,7 @@ impl Default for ShortcutsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RulerConfig {
     pub initial_tolerance: u8,
     pub tolerance_step: u8,
@@ -152,6 +149,7 @@ impl Default for RulerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BoundsConfig {
     pub shift_pins_bounds: bool,
     pub border_thickness: f64,
@@ -167,6 +165,7 @@ impl Default for BoundsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppearanceConfig {
     pub overlay_opacity: f64,
     pub line_color: String,
@@ -204,6 +203,7 @@ impl Default for AppearanceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UnitsConfig {
     pub show_pixel_unit: bool,
     pub secondary_unit: SecondaryUnit,
@@ -221,6 +221,7 @@ impl Default for UnitsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ClipboardConfig {
     pub format: CopyFormat,
 }
@@ -234,29 +235,13 @@ impl Default for ClipboardConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LoggingConfig {
-    #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_log_level")]
     pub level: String,
-    #[serde(default = "default_retention_days")]
     pub retention_days: u32,
-    #[serde(default = "default_true")]
     pub log_to_console: bool,
-    #[serde(default = "default_true")]
     pub log_to_file: bool,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn default_log_level() -> String {
-    "info".to_string()
-}
-
-fn default_retention_days() -> u32 {
-    4
 }
 
 impl Default for LoggingConfig {
@@ -520,11 +505,37 @@ impl Config {
     }
 
     /// Loads configuration from given path or default path.
-    /// If file does not exist, creates parent directory and writes default commented configuration.
+    /// If file does not exist, searches XDG_CONFIG_DIRS, then creates parent directory
+    /// and writes default commented configuration if no configuration file was found.
     pub fn load_or_create(custom_path: Option<&Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let path = match custom_path {
             Some(p) => p.to_path_buf(),
-            None => Self::default_path(),
+            None => {
+                let user_path = Self::default_path();
+                if user_path.exists() {
+                    user_path
+                } else {
+                    // Check XDG_CONFIG_DIRS or /etc/xdg for system-wide configuration (e.g. NixOS /etc/xdg/edged/config.toml)
+                    let mut found_system = None;
+                    if let Ok(xdg_dirs) = std::env::var("XDG_CONFIG_DIRS") {
+                        for dir in xdg_dirs.split(':') {
+                            let p = PathBuf::from(dir).join("edged").join("config.toml");
+                            if p.exists() {
+                                found_system = Some(p);
+                                break;
+                            }
+                        }
+                    }
+                    if found_system.is_none() {
+                        let fallback_sys = PathBuf::from("/etc/xdg/edged/config.toml");
+                        if fallback_sys.exists() {
+                            found_system = Some(fallback_sys);
+                        }
+                    }
+
+                    found_system.unwrap_or(user_path)
+                }
+            }
         };
 
         if !path.exists() {

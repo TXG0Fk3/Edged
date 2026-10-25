@@ -836,3 +836,49 @@ fn test_render_theme_from_config() {
     assert!(theme.badge_bg_color.a() > 0);
     assert!(theme.badge_text_color.a() > 0);
 }
+
+#[test]
+fn test_xdg_config_dirs_system_fallback() {
+    let temp_xdg = std::env::temp_dir().join(format!("edged_xdg_test_{}", std::process::id()));
+    let edged_dir = temp_xdg.join("edged");
+    std::fs::create_dir_all(&edged_dir).unwrap();
+    let sys_config_file = edged_dir.join("config.toml");
+    std::fs::write(
+        &sys_config_file,
+        r#"
+[general]
+default_mode = "bounds"
+
+[ruler]
+initial_tolerance = 42
+"#,
+    )
+    .unwrap();
+
+    let cfg = Config::load_or_create(Some(&sys_config_file)).expect("Load system config");
+    assert_eq!(cfg.ruler.initial_tolerance, 42);
+    assert_eq!(cfg.general.default_mode, edged::config::DefaultMode::Bounds);
+
+    let _ = std::fs::remove_dir_all(&temp_xdg);
+}
+
+#[test]
+fn test_nix_sources_json_schema() {
+    let sources_path = std::path::Path::new("nix/sources.json");
+    assert!(sources_path.exists(), "nix/sources.json must exist");
+
+    let content = std::fs::read_to_string(sources_path).expect("read nix/sources.json");
+    let val: serde_json::Value = serde_json::from_str(&content).expect("parse JSON");
+
+    let version = val.get("version").and_then(|v| v.as_str()).expect("version field");
+    let clean_version = val.get("clean_version").and_then(|v| v.as_str()).expect("clean_version field");
+    let url = val.get("url").and_then(|v| v.as_str()).expect("url field");
+    let sha256 = val.get("sha256").and_then(|v| v.as_str()).expect("sha256 field");
+
+    assert!(version.starts_with('v'), "version must start with 'v'");
+    assert!(!clean_version.starts_with('v'), "clean_version must not start with 'v'");
+    assert_eq!(&version[1..], clean_version, "clean_version must match version without 'v'");
+    assert!(url.contains("github.com/TXG0Fk3/Edged/releases/download/"), "url must point to GitHub release");
+    assert_eq!(sha256.len(), 64, "sha256 must be 64 characters hex string");
+    assert!(sha256.chars().all(|c| c.is_ascii_hexdigit()), "sha256 must be valid hex");
+}

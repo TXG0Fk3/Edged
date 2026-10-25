@@ -126,6 +126,7 @@ jobs:
             | **Fedora / RHEL / openSUSE** | [`edged-${{ env.CLEAN_VERSION }}-1.x86_64.rpm`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.CLEAN_VERSION }}-1.x86_64.rpm) | `sudo dnf install ./edged-*.rpm` |
             | **Universal AppImage** | [`edged-${{ env.VERSION }}-x86_64.AppImage`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.VERSION }}-x86_64.AppImage) | `chmod +x edged-*.AppImage && ./edged-*.AppImage` |
             | **Tarball Archive** | [`edged-${{ env.VERSION }}-x86_64-linux.tar.gz`](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/edged-${{ env.VERSION }}-x86_64-linux.tar.gz) | `tar -xzf edged-*.tar.gz && cd edged-* && sudo ./install.sh` |
+            | **Nix / NixOS** | [`flake.nix`](https://github.com/${{ github.repository }}/blob/master/flake.nix) | `nix run github:${{ github.repository }}` |
 
             ### 🔐 Checksums & Verification
             Verify downloads using the provided `SHA256SUMS.txt`:
@@ -135,3 +136,26 @@ jobs:
           files: dist/*
           draft: false
           prerelease: false
+
+      - name: Auto-Update Nix Flake Sources
+        run: |
+          TAR_FILE="dist/edged-${VERSION}-x86_64-linux.tar.gz"
+          TAR_SHA=$(sha256sum "$TAR_FILE" | awk '{print $1}')
+          TAR_URL="https://github.com/${{ github.repository }}/releases/download/${VERSION}/edged-${VERSION}-x86_64-linux.tar.gz"
+
+          cat << EOF > nix/sources.json
+          {
+            "version": "${VERSION}",
+            "clean_version": "${CLEAN_VERSION}",
+            "url": "${TAR_URL}",
+            "sha256": "${TAR_SHA}"
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nix/sources.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(nix): auto-update flake sources to ${VERSION} [skip ci]"
+            git push origin master
+          fi

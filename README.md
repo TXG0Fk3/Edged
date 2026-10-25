@@ -23,11 +23,11 @@
 - [Key Features](#-key-features)
 - [Modes of Operation](#-modes-of-operation)
 - [Interactive Controls Cheatsheet](#-interactive-controls-cheatsheet)
-- [Installation](#-installation)
-  - [Arch Linux](#arch-linux)
-  - [Fedora](#fedora)
-  - [Ubuntu / Debian](#ubuntu--debian)
-  - [From Source (Cargo)](#from-source-cargo)
+- [Installation](#-installation--prebuilt-packages)
+  - [Prebuilt Packages](#1-prebuilt-packages-recommended)
+  - [Nix & NixOS (Flake & Modules)](#2-nix--nixos-flake--modules)
+  - [Arch Linux (AUR)](#3-arch-linux-aur)
+  - [From Source (Cargo)](#4-from-source-cargo)
   - [Desktop Entry](#desktop-entry)
 - [CLI Reference](#-cli-reference)
 - [Compositor & Window Manager Setup](#-compositor--window-manager-setup)
@@ -148,6 +148,7 @@ Every push to the repository automatically triggers automated builds creating pa
 
 | Format / Distro | Package File | Direct Installation Command |
 | :--- | :--- | :--- |
+| **Nix / NixOS** | `flake.nix` | `nix run github:TXG0Fk3/Edged` |
 | **Standalone Binary** | `edged` | `chmod +x edged && ./edged` |
 | **Debian / Ubuntu / Mint** | `edged_*_amd64.deb` | `sudo apt install ./edged_*_amd64.deb` |
 | **Fedora / RHEL / openSUSE** | `edged-*-1.x86_64.rpm` | `sudo dnf install ./edged-*-1.x86_64.rpm` |
@@ -157,7 +158,87 @@ Every push to the repository automatically triggers automated builds creating pa
 
 ---
 
-### 2. Arch Linux (AUR)
+### 2. Nix & NixOS (Flake & Modules)
+
+Edged provides a first-class **Nix Flake** using official precompiled release tarballs (no local compilation needed). It automatically wraps all runtime Wayland, OpenGL, and clipboard dependencies (`libGL`, `libxkbcommon`, `wayland`, `vulkan-loader`, `grim`, `wl-clipboard`) and self-updates on every release.
+
+#### Quick Run (Zero Install)
+```bash
+nix run github:TXG0Fk3/Edged
+# Or pass mode flags directly:
+nix run github:TXG0Fk3/Edged -- --bounds
+```
+
+#### Add to Flake Inputs
+```nix
+inputs = {
+  nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  edged.url = "github:TXG0Fk3/Edged";
+};
+```
+
+#### Home Manager Module (Recommended for User Config)
+Import the Home Manager module and configure your preferred defaults directly in Nix:
+```nix
+{ inputs, ... }: {
+  imports = [ inputs.edged.homeManagerModules.default ];
+
+  programs.edged = {
+    enable = true;
+    settings = {
+      general = {
+        default_mode = "spacing";
+        close_on_copy = true;
+      };
+      monitor = {
+        target = "focused";
+        crop_to_monitor = true;
+      };
+      ruler = {
+        initial_tolerance = 15;
+        continuous = true;
+        draw_feet = true;
+      };
+      appearance = {
+        line_color = "#3B82F6";
+      };
+      units = {
+        show_pixel_unit = true;
+        secondary_unit = "none";
+      };
+      clipboard = {
+        format = "compact";
+      };
+    };
+  };
+}
+```
+
+#### NixOS Module (System-Wide Installation)
+```nix
+{ inputs, ... }: {
+  imports = [ inputs.edged.nixosModules.default ];
+
+  programs.edged = {
+    enable = true;
+    settings = {
+      general.default_mode = "spacing";
+    };
+  };
+}
+```
+
+#### Overlay
+```nix
+{ inputs, pkgs, ... }: {
+  nixpkgs.overlays = [ inputs.edged.overlays.default ];
+  environment.systemPackages = [ pkgs.edged ];
+}
+```
+
+---
+
+### 3. Arch Linux (AUR)
 
 ```bash
 paru -S edged-git
@@ -165,7 +246,7 @@ paru -S edged-git
 yay -S edged-git
 ```
 
-### 3. From Source (Cargo)
+### 4. From Source (Cargo)
 
 Ensure you have Rust 1.80 or later installed:
 
