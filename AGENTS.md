@@ -180,9 +180,18 @@ The packaging pipeline generates 6 distinct distribution formats in `dist/`:
 
 ---
 
-## 7. Testing Strategy for Future Agents
+## 7. Mandatory Testing Protocols (Continuous Verification)
 
-When modifying features:
-1. **Algorithms, Math, Config, Logging**: Add automated tests to `tests/ruler_tests.rs`.
-2. **Compositor, Wayland Protocols, Capture, UI Hardware**: Follow the protocols defined in `MANUAL_TESTING.md`.
-3. If an automated test cannot recreate a bug because it requires a live Wayland display server, document the manual verification procedure in `MANUAL_TESTING.md`.
+> [!IMPORTANT]
+> **Always update and verify both automated and manual test suites whenever changes are made:**
+> 1. **Automated Unit & Integration Tests**:
+>    - Every code change, refactoring, or bug fix must update or add corresponding unit/integration tests in `tests/ruler_tests.rs`.
+>    - Always execute and verify that all tests pass cleanly before completing work:
+>      ```bash
+>      cargo test --all-targets --verbose
+>      ```
+>    - Maintain zero regressions across all targets.
+> 2. **Manual QA Plan & AI Checklist (`MANUAL_TESTING.md`)**:
+>    - Whenever new CLI flags, keyboard shortcuts, UI rendering behaviors, screen capture methods, or compositor integrations are introduced or modified, **you must update `MANUAL_TESTING.md`**.
+>    - Keep both the step-by-step test suites and the copy-pasteable AI Checklist synchronized with the latest feature set so manual testers always have up-to-date procedures.
+> 3. If an issue requires a live Wayland display server or hardware GPU environment that automated tests cannot replicate, document the reproduction and validation procedure in `MANUAL_TESTING.md`.
