@@ -1,163 +1,129 @@
 use crate::config::{parse_color, Config, SecondaryUnit};
 use crate::ruler::bounds::Rect;
 use crate::ruler::{EdgeMeasurement, RulerMode};
-use cairo::{Context, ImageSurface};
-use pangocairo::pango::{self, FontDescription};
-use std::f64::consts::{FRAC_PI_2, PI};
+use egui::{Color32, FontId, Pos2, Rect as EguiRect, Stroke, StrokeKind, Vec2};
+use std::sync::Arc;
 
-pub struct Renderer<'a> {
-    cr: &'a Context,
-    config: &'a Config,
+pub fn to_egui_color(color_str: &str) -> Color32 {
+    let (r, g, b, a) = parse_color(color_str);
+    Color32::from_rgba_unmultiplied(
+        (r * 255.0).round() as u8,
+        (g * 255.0).round() as u8,
+        (b * 255.0).round() as u8,
+        (a * 255.0).round() as u8,
+    )
 }
 
-impl<'a> Renderer<'a> {
-    pub fn new(cr: &'a Context, config: &'a Config) -> Self {
-        Self { cr, config }
-    }
+pub struct EguiRenderer<'a> {
+    pub painter: &'a egui::Painter,
+    pub config: Arc<Config>,
+    pub pixels_per_point: f32,
+}
 
-    /// Renders the captured screen background frame and applies the configured overlay tint
-    pub fn draw_background(
-        &self,
-        surface: &ImageSurface,
-        monitor_x: f64,
-        monitor_y: f64,
-        scale_factor: f64,
-        _width: f64,
-        _height: f64,
-    ) {
-        // 1. Paint the captured desktop screenshot
-        let _ = self.cr.save();
-        if (scale_factor - 1.0).abs() > 0.001 {
-            self.cr.scale(1.0 / scale_factor, 1.0 / scale_factor);
-            let _ = self.cr.set_source_surface(
-                surface,
-                -monitor_x * scale_factor,
-                -monitor_y * scale_factor,
-            );
-        } else {
-            let _ = self.cr.set_source_surface(surface, -monitor_x, -monitor_y);
-        }
-        let _ = self.cr.paint();
-        let _ = self.cr.restore();
-
-        // 2. Apply dimming overlay tint if configured
-        if self.config.appearance.overlay_opacity > 0.0 {
-            self.cr.set_source_rgba(
-                0.0,
-                0.0,
-                0.0,
-                self.config.appearance.overlay_opacity.clamp(0.0, 1.0),
-            );
-            let _ = self.cr.paint();
+impl<'a> EguiRenderer<'a> {
+    pub fn new(painter: &'a egui::Painter, config: Arc<Config>, pixels_per_point: f32) -> Self {
+        Self {
+            painter,
+            config,
+            pixels_per_point,
         }
     }
 
-    /// Renders measurement rulers for Spacing, Horizontal, or Vertical modes
-    pub fn draw_spacing_ruler(
+    /// Renders measurement lines, feet, and dimension badges for Spacing, Horizontal, and Vertical modes
+    pub fn draw_measurement(
         &self,
-        measurement: &EdgeMeasurement,
         mode: RulerMode,
-        monitor_x: f64,
-        monitor_y: f64,
-        scale_factor: f64,
+        cursor: Pos2,
+        measurement: &EdgeMeasurement,
         tolerance_hud: Option<u8>,
         mode_hud: Option<RulerMode>,
     ) {
-        // Map global image coordinates to window-local logical coordinates
-        let cx = (measurement.cursor_x as f64) / scale_factor - monitor_x;
-        let cy = (measurement.cursor_y as f64) / scale_factor - monitor_y;
-        let left_x = (measurement.left_x as f64) / scale_factor - monitor_x;
-        let right_x = (measurement.right_x as f64) / scale_factor - monitor_x;
-        let top_y = (measurement.top_y as f64) / scale_factor - monitor_y;
-        let bottom_y = (measurement.bottom_y as f64) / scale_factor - monitor_y;
+        let scale = self.pixels_per_point;
+        let cx = cursor.x;
+        let cy = cursor.y;
+        let left_x = measurement.left_x as f32 / scale;
+        let right_x = measurement.right_x as f32 / scale;
+        let top_y = measurement.top_y as f32 / scale;
+        let bottom_y = measurement.bottom_y as f32 / scale;
 
-        let feet_size = self.config.ruler.feet_size;
+        let feet_size = self.config.ruler.feet_size as f32;
         let draw_feet = self.config.ruler.draw_feet;
-        let line_thickness = self.config.ruler.line_thickness;
+        let line_thickness = self.config.ruler.line_thickness as f32;
 
-        let (lr, lg, lb, la) = parse_color(&self.config.appearance.line_color);
-        let (sr, sg, sb, sa) = parse_color(&self.config.appearance.line_shadow_color);
+        let line_color = to_egui_color(&self.config.appearance.line_color);
+        let shadow_color = to_egui_color(&self.config.appearance.line_shadow_color);
 
-        // 1. Horizontal measurement line (Spacing and Horizontal modes)
+        let stroke_shadow = Stroke::new(line_thickness + 2.0, shadow_color);
+        let stroke_line = Stroke::new(line_thickness, line_color);
+
+        // 1. Horizontal line
         if mode == RulerMode::Spacing || mode == RulerMode::Horizontal {
-            // Shadow / outline stroke for high contrast on any background
-            self.cr.set_source_rgba(sr, sg, sb, sa);
-            self.cr.set_line_width(line_thickness + 2.0);
-            self.cr.move_to(left_x, cy);
-            self.cr.line_to(right_x, cy);
-            let _ = self.cr.stroke();
-
-            // Feet (shadow)
+            // Shadow
+            self.painter.line_segment([Pos2::new(left_x, cy), Pos2::new(right_x, cy)], stroke_shadow);
             if draw_feet {
-                self.cr.move_to(left_x, cy - feet_size / 2.0);
-                self.cr.line_to(left_x, cy + feet_size / 2.0);
-                self.cr.move_to(right_x, cy - feet_size / 2.0);
-                self.cr.line_to(right_x, cy + feet_size / 2.0);
-                let _ = self.cr.stroke();
+                self.painter.line_segment(
+                    [Pos2::new(left_x, cy - feet_size / 2.0), Pos2::new(left_x, cy + feet_size / 2.0)],
+                    stroke_shadow,
+                );
+                self.painter.line_segment(
+                    [Pos2::new(right_x, cy - feet_size / 2.0), Pos2::new(right_x, cy + feet_size / 2.0)],
+                    stroke_shadow,
+                );
             }
 
-            // Primary line stroke
-            self.cr.set_source_rgba(lr, lg, lb, la);
-            self.cr.set_line_width(line_thickness);
-            self.cr.move_to(left_x, cy);
-            self.cr.line_to(right_x, cy);
-            let _ = self.cr.stroke();
-
-            // Feet (primary)
+            // Primary line
+            self.painter.line_segment([Pos2::new(left_x, cy), Pos2::new(right_x, cy)], stroke_line);
             if draw_feet {
-                self.cr.move_to(left_x, cy - feet_size / 2.0);
-                self.cr.line_to(left_x, cy + feet_size / 2.0);
-                self.cr.move_to(right_x, cy - feet_size / 2.0);
-                self.cr.line_to(right_x, cy + feet_size / 2.0);
-                let _ = self.cr.stroke();
+                self.painter.line_segment(
+                    [Pos2::new(left_x, cy - feet_size / 2.0), Pos2::new(left_x, cy + feet_size / 2.0)],
+                    stroke_line,
+                );
+                self.painter.line_segment(
+                    [Pos2::new(right_x, cy - feet_size / 2.0), Pos2::new(right_x, cy + feet_size / 2.0)],
+                    stroke_line,
+                );
             }
 
-            // Dimension label badge
+            // Badge
             let badge_text = self.format_length(measurement.width);
             let badge_x = (left_x + right_x) / 2.0;
             let badge_y = if mode == RulerMode::Spacing {
-                cy - 22.0
+                cy - 20.0
             } else {
-                cy - 18.0
+                cy - 16.0
             };
-            self.draw_badge(badge_x, badge_y, &badge_text);
+            self.draw_badge(Pos2::new(badge_x, badge_y), &badge_text);
         }
 
-        // 2. Vertical measurement line (Spacing and Vertical modes)
+        // 2. Vertical line
         if mode == RulerMode::Spacing || mode == RulerMode::Vertical {
-            // Shadow / outline stroke
-            self.cr.set_source_rgba(sr, sg, sb, sa);
-            self.cr.set_line_width(line_thickness + 2.0);
-            self.cr.move_to(cx, top_y);
-            self.cr.line_to(cx, bottom_y);
-            let _ = self.cr.stroke();
-
-            // Feet (shadow)
+            // Shadow
+            self.painter.line_segment([Pos2::new(cx, top_y), Pos2::new(cx, bottom_y)], stroke_shadow);
             if draw_feet {
-                self.cr.move_to(cx - feet_size / 2.0, top_y);
-                self.cr.line_to(cx + feet_size / 2.0, top_y);
-                self.cr.move_to(cx - feet_size / 2.0, bottom_y);
-                self.cr.line_to(cx + feet_size / 2.0, bottom_y);
-                let _ = self.cr.stroke();
+                self.painter.line_segment(
+                    [Pos2::new(cx - feet_size / 2.0, top_y), Pos2::new(cx + feet_size / 2.0, top_y)],
+                    stroke_shadow,
+                );
+                self.painter.line_segment(
+                    [Pos2::new(cx - feet_size / 2.0, bottom_y), Pos2::new(cx + feet_size / 2.0, bottom_y)],
+                    stroke_shadow,
+                );
             }
 
-            // Primary line stroke
-            self.cr.set_source_rgba(lr, lg, lb, la);
-            self.cr.set_line_width(line_thickness);
-            self.cr.move_to(cx, top_y);
-            self.cr.line_to(cx, bottom_y);
-            let _ = self.cr.stroke();
-
-            // Feet (primary)
+            // Primary line
+            self.painter.line_segment([Pos2::new(cx, top_y), Pos2::new(cx, bottom_y)], stroke_line);
             if draw_feet {
-                self.cr.move_to(cx - feet_size / 2.0, top_y);
-                self.cr.line_to(cx + feet_size / 2.0, top_y);
-                self.cr.move_to(cx - feet_size / 2.0, bottom_y);
-                self.cr.line_to(cx + feet_size / 2.0, bottom_y);
-                let _ = self.cr.stroke();
+                self.painter.line_segment(
+                    [Pos2::new(cx - feet_size / 2.0, top_y), Pos2::new(cx + feet_size / 2.0, top_y)],
+                    stroke_line,
+                );
+                self.painter.line_segment(
+                    [Pos2::new(cx - feet_size / 2.0, bottom_y), Pos2::new(cx + feet_size / 2.0, bottom_y)],
+                    stroke_line,
+                );
             }
 
-            // Dimension label badge
+            // Badge
             let badge_text = self.format_length(measurement.height);
             let badge_x = if mode == RulerMode::Spacing {
                 cx + 28.0
@@ -165,20 +131,27 @@ impl<'a> Renderer<'a> {
                 cx + 24.0
             };
             let badge_y = (top_y + bottom_y) / 2.0;
-            self.draw_badge(badge_x, badge_y, &badge_text);
+            self.draw_badge(Pos2::new(badge_x, badge_y), &badge_text);
         }
 
-        // 3. Subtle center crosshair at cursor position
+        // 3. Subtle cursor crosshair
         if self.config.ruler.draw_crosshair {
-            self.draw_crosshair(cx, cy);
+            let arm = 7.0;
+            let ch_shadow = Stroke::new(3.0, shadow_color);
+            let ch_primary = Stroke::new(1.5, Color32::from_rgb(240, 240, 240));
+
+            self.painter.line_segment([Pos2::new(cx - arm, cy), Pos2::new(cx + arm, cy)], ch_shadow);
+            self.painter.line_segment([Pos2::new(cx, cy - arm), Pos2::new(cx, cy + arm)], ch_shadow);
+            self.painter.line_segment([Pos2::new(cx - arm, cy), Pos2::new(cx + arm, cy)], ch_primary);
+            self.painter.line_segment([Pos2::new(cx, cy - arm), Pos2::new(cx, cy + arm)], ch_primary);
         }
 
-        // 4. Dynamic tolerance HUD (displayed when mouse wheel is scrolled)
+        // 4. Tolerance HUD
         if let Some(tol) = tolerance_hud {
             self.draw_tolerance_hud(cx, cy, tol);
         }
 
-        // 5. Mode switch HUD (displayed when mode changes)
+        // 5. Mode switch HUD
         if let Some(active_mode) = mode_hud {
             self.draw_mode_hud(cx, cy, active_mode);
         }
@@ -189,278 +162,142 @@ impl<'a> Renderer<'a> {
         &self,
         pinned: &[Rect],
         active: Option<Rect>,
-        cursor: (f64, f64),
-        scale_factor: f64,
+        cursor: Pos2,
         shift_held: bool,
         mode_hud: Option<RulerMode>,
     ) {
-        let (br, bg, bb, ba) = parse_color(&self.config.appearance.bounds_border_color);
-        let (fr, fg, fb, fa) = parse_color(&self.config.appearance.bounds_fill_color);
-        let (sr, sg, sb, sa) = parse_color(&self.config.appearance.line_shadow_color);
-        let border_thickness = self.config.bounds.border_thickness;
+        let border_thickness = self.config.bounds.border_thickness as f32;
+        let border_color = to_egui_color(&self.config.appearance.bounds_border_color);
+        let fill_color = to_egui_color(&self.config.appearance.bounds_fill_color);
+        let shadow_color = to_egui_color(&self.config.appearance.line_shadow_color);
 
-        // Render previously pinned rectangles (Shift + Drag)
-        for rect in pinned {
-            // Fill
-            self.cr.set_source_rgba(fr, fg, fb, fa * 0.7);
-            self.cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            let _ = self.cr.fill();
+        let scale = self.pixels_per_point;
 
-            // Border
-            self.cr.set_source_rgba(br, bg, bb, ba * 0.85);
-            self.cr.set_line_width(border_thickness);
-            self.cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            let _ = self.cr.stroke();
+        // Render previously pinned rectangles
+        for r in pinned {
+            let egui_r = EguiRect::from_min_size(Pos2::new(r.x as f32, r.y as f32), Vec2::new(r.width as f32, r.height as f32));
+            self.painter.rect_filled(egui_r, 0.0, Color32::from_rgba_unmultiplied(fill_color.r(), fill_color.g(), fill_color.b(), (fill_color.a() as f32 * 0.7) as u8));
+            self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness, border_color), StrokeKind::Middle);
 
-            // Dimension badge
-            let w_px = (rect.width * scale_factor).round() as u32;
-            let h_px = (rect.height * scale_factor).round() as u32;
+            let w_px = (r.width as f32 * scale).round() as u32;
+            let h_px = (r.height as f32 * scale).round() as u32;
             let label = self.format_dimensions(w_px, h_px);
-            let (cx, cy) = rect.center();
-            self.draw_badge(cx, cy, &label);
+            let (cx, cy) = r.center();
+            self.draw_badge(Pos2::new(cx as f32, cy as f32), &label);
         }
 
         // Render active rectangle being drawn
-        if let Some(rect) = active {
-            // Shadow stroke
-            self.cr.set_source_rgba(sr, sg, sb, sa);
-            self.cr.set_line_width(border_thickness + 2.0);
-            self.cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            let _ = self.cr.stroke();
+        if let Some(r) = active {
+            let egui_r = EguiRect::from_min_size(Pos2::new(r.x as f32, r.y as f32), Vec2::new(r.width as f32, r.height as f32));
+            self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness + 2.0, shadow_color), StrokeKind::Middle);
+            self.painter.rect_filled(egui_r, 0.0, fill_color);
+            self.painter.rect_stroke(egui_r, 0.0, Stroke::new(border_thickness, border_color), StrokeKind::Middle);
 
-            // Fill
-            self.cr.set_source_rgba(fr, fg, fb, fa);
-            self.cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            let _ = self.cr.fill();
-
-            // Primary border stroke
-            self.cr.set_source_rgba(br, bg, bb, ba);
-            self.cr.set_line_width(border_thickness);
-            self.cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            let _ = self.cr.stroke();
-
-            // Dimension badge
-            let w_px = (rect.width * scale_factor).round() as u32;
-            let h_px = (rect.height * scale_factor).round() as u32;
+            let w_px = (r.width as f32 * scale).round() as u32;
+            let h_px = (r.height as f32 * scale).round() as u32;
             let label = self.format_dimensions(w_px, h_px);
-            let (cx, cy) = rect.center();
-            self.draw_badge(cx, cy, &label);
-        } else {
-            // Render cursor crosshair when not dragging
-            if self.config.ruler.draw_crosshair {
-                self.draw_crosshair(cursor.0, cursor.1);
-            }
+            let (cx, cy) = r.center();
+            self.draw_badge(Pos2::new(cx as f32, cy as f32), &label);
+        } else if self.config.ruler.draw_crosshair {
+            let arm = 7.0;
+            let ch_shadow = Stroke::new(3.0, shadow_color);
+            let ch_primary = Stroke::new(1.5, Color32::from_rgb(240, 240, 240));
+
+            self.painter.line_segment([Pos2::new(cursor.x - arm, cursor.y), Pos2::new(cursor.x + arm, cursor.y)], ch_shadow);
+            self.painter.line_segment([Pos2::new(cursor.x, cursor.y - arm), Pos2::new(cursor.x, cursor.y + arm)], ch_shadow);
+            self.painter.line_segment([Pos2::new(cursor.x - arm, cursor.y), Pos2::new(cursor.x + arm, cursor.y)], ch_primary);
+            self.painter.line_segment([Pos2::new(cursor.x, cursor.y - arm), Pos2::new(cursor.x, cursor.y + arm)], ch_primary);
         }
 
-        // Visual hint badge when Shift key is held
         if shift_held && self.config.bounds.shift_pins_bounds {
-            self.draw_badge(cursor.0, cursor.1 - 24.0, "[Shift] Pin");
+            self.draw_badge(Pos2::new(cursor.x, cursor.y - 30.0), "Shift: Pin Mode");
         }
 
-        // Mode switch HUD
         if let Some(active_mode) = mode_hud {
-            self.draw_mode_hud(cursor.0, cursor.1, active_mode);
+            self.draw_mode_hud(cursor.x, cursor.y, active_mode);
         }
     }
 
-    /// Draws a subtle 4px crosshair at the specified position
-    fn draw_crosshair(&self, x: f64, y: f64) {
-        let (lr, lg, lb, la) = parse_color(&self.config.appearance.line_color);
-        self.cr.set_source_rgba(0.0, 0.0, 0.0, 0.7);
-        self.cr.set_line_width(3.0);
-        self.cr.move_to(x - 5.0, y);
-        self.cr.line_to(x + 5.0, y);
-        self.cr.move_to(x, y - 5.0);
-        self.cr.line_to(x, y + 5.0);
-        let _ = self.cr.stroke();
+    /// Renders a dimension or status badge
+    pub fn draw_badge(&self, center: Pos2, text: &str) {
+        let font_size = self.config.appearance.label_font_size as f32;
+        let font_id = FontId::proportional(font_size);
+        let pad_x = self.config.appearance.label_padding_x as f32;
+        let pad_y = self.config.appearance.label_padding_y as f32;
+        let radius = self.config.appearance.label_border_radius as f32;
 
-        self.cr.set_source_rgba(lr, lg, lb, la);
-        self.cr.set_line_width(1.5);
-        self.cr.move_to(x - 4.0, y);
-        self.cr.line_to(x + 4.0, y);
-        self.cr.move_to(x, y - 4.0);
-        self.cr.line_to(x, y + 4.0);
-        let _ = self.cr.stroke();
+        let text_color = to_egui_color(&self.config.appearance.label_text_color);
+        let bg_color = to_egui_color(&self.config.appearance.label_bg_color);
+        let border_color = to_egui_color(&self.config.appearance.label_border_color);
+
+        let galley = self.painter.layout_no_wrap(text.to_string(), font_id, text_color);
+        let badge_w = galley.size().x + pad_x * 2.0;
+        let badge_h = galley.size().y + pad_y * 2.0;
+
+        let badge_rect = EguiRect::from_center_size(center, Vec2::new(badge_w, badge_h));
+
+        self.painter.rect_filled(badge_rect, radius, bg_color);
+        self.painter.rect_stroke(badge_rect, radius, Stroke::new(1.0, border_color), StrokeKind::Middle);
+        self.painter.galley(Pos2::new(badge_rect.min.x + pad_x, badge_rect.min.y + pad_y), galley, text_color);
     }
 
-    /// Renders a numeric pill badge with rounded background and high-contrast border
-    pub fn draw_badge(&self, center_x: f64, center_y: f64, text: &str) {
-        let layout = pangocairo::functions::create_layout(self.cr);
-        let mut font_desc = FontDescription::from_string(&self.config.appearance.label_font_family);
-        font_desc.set_size((self.config.appearance.label_font_size * pango::SCALE as f64) as i32);
-        font_desc.set_weight(pango::Weight::Bold);
-        layout.set_font_description(Some(&font_desc));
-        layout.set_text(text);
-
-        let (text_w, text_h) = layout.pixel_size();
-        let pad_x = self.config.appearance.label_padding_x;
-        let pad_y = self.config.appearance.label_padding_y;
-        let radius = self.config.appearance.label_border_radius;
-
-        let badge_w = text_w as f64 + pad_x * 2.0;
-        let badge_h = text_h as f64 + pad_y * 2.0;
-        let badge_x = center_x - badge_w / 2.0;
-        let badge_y = center_y - badge_h / 2.0;
-
-        // Badge background
-        let (bgr, bgg, bgb, bga) = parse_color(&self.config.appearance.label_bg_color);
-        self.cr.set_source_rgba(bgr, bgg, bgb, bga);
-        draw_rounded_rect(self.cr, badge_x, badge_y, badge_w, badge_h, radius);
-        let _ = self.cr.fill();
-
-        // Badge border
-        let (br, bg, bb, ba) = parse_color(&self.config.appearance.label_border_color);
-        self.cr.set_source_rgba(br, bg, bb, ba);
-        self.cr.set_line_width(1.0);
-        draw_rounded_rect(self.cr, badge_x, badge_y, badge_w, badge_h, radius);
-        let _ = self.cr.stroke();
-
-        // Badge text
-        let (tr, tg, tb, ta) = parse_color(&self.config.appearance.label_text_color);
-        self.cr.set_source_rgba(tr, tg, tb, ta);
-        self.cr.move_to(badge_x + pad_x, badge_y + pad_y);
-        pangocairo::functions::show_layout(self.cr, &layout);
+    /// Renders dynamic tolerance adjustment HUD
+    pub fn draw_tolerance_hud(&self, cx: f32, cy: f32, tolerance: u8) {
+        let hud_y = (cy - 48.0).max(40.0);
+        let label = format!("Sensitivity: {}%", tolerance);
+        self.draw_badge(Pos2::new(cx, hud_y), &label);
     }
 
-    /// Renders dynamic tolerance HUD badge when scrolling
-    fn draw_tolerance_hud(&self, cx: f64, cy: f64, tolerance: u8) {
-        let text = format!("Tolerance: {}%", tolerance);
-        let hud_x = cx + 20.0;
-        let hud_y = cy - 35.0;
-
-        let layout = pangocairo::functions::create_layout(self.cr);
-        let mut font_desc = FontDescription::from_string(&self.config.appearance.label_font_family);
-        font_desc.set_size((11.0 * pango::SCALE as f64) as i32);
-        layout.set_font_description(Some(&font_desc));
-        layout.set_text(&text);
-
-        let (tw, th) = layout.pixel_size();
-        let bar_h = 3.0;
-        let pad = 6.0;
-        let w = (tw as f64).max(85.0) + pad * 2.0;
-        let h = (th as f64) + bar_h + pad * 2.5;
-
-        // HUD background
-        self.cr.set_source_rgba(0.06, 0.09, 0.16, 0.95);
-        draw_rounded_rect(self.cr, hud_x, hud_y, w, h, 6.0);
-        let _ = self.cr.fill();
-
-        // HUD border
-        self.cr.set_source_rgba(0.28, 0.33, 0.41, 0.9);
-        self.cr.set_line_width(1.0);
-        draw_rounded_rect(self.cr, hud_x, hud_y, w, h, 6.0);
-        let _ = self.cr.stroke();
-
-        // HUD text
-        self.cr.set_source_rgba(0.97, 0.98, 0.99, 1.0);
-        self.cr.move_to(hud_x + pad, hud_y + pad);
-        pangocairo::functions::show_layout(self.cr, &layout);
-
-        // Progress bar
-        let bar_y = hud_y + pad + (th as f64) + 3.0;
-        let bar_w = w - pad * 2.0;
-        let progress_w = bar_w * (tolerance as f64 / 100.0);
-
-        // Progress bar background
-        self.cr.set_source_rgba(0.2, 0.25, 0.33, 1.0);
-        self.cr.rectangle(hud_x + pad, bar_y, bar_w, bar_h);
-        let _ = self.cr.fill();
-
-        // Progress bar fill
-        let (lr, lg, lb, _) = parse_color(&self.config.appearance.line_color);
-        self.cr.set_source_rgba(lr, lg, lb, 1.0);
-        self.cr.rectangle(hud_x + pad, bar_y, progress_w, bar_h);
-        let _ = self.cr.fill();
+    /// Renders mode switch notification HUD
+    pub fn draw_mode_hud(&self, cx: f32, cy: f32, mode: RulerMode) {
+        let hud_y = (cy + 42.0).max(40.0);
+        let label = format!("Mode: {}", mode.name());
+        self.draw_badge(Pos2::new(cx, hud_y), &label);
     }
 
-    /// Renders mode switch HUD badge when switching modes
-    fn draw_mode_hud(&self, cx: f64, cy: f64, mode: RulerMode) {
-        let text = format!("Mode: {}", mode.name());
-        let hud_x = cx + 20.0;
-        let hud_y = cy - 42.0;
-
-        let layout = pangocairo::functions::create_layout(self.cr);
-        let mut font_desc = FontDescription::from_string(&self.config.appearance.label_font_family);
-        font_desc.set_size((11.5 * pango::SCALE as f64) as i32);
-        font_desc.set_weight(pango::Weight::Bold);
-        layout.set_font_description(Some(&font_desc));
-        layout.set_text(&text);
-
-        let (tw, th) = layout.pixel_size();
-        let pad_x = 9.0;
-        let pad_y = 5.0;
-        let w = (tw as f64) + pad_x * 2.0;
-        let h = (th as f64) + pad_y * 2.0;
-
-        // Background
-        self.cr.set_source_rgba(0.06, 0.09, 0.16, 0.95);
-        draw_rounded_rect(self.cr, hud_x, hud_y, w, h, 6.0);
-        let _ = self.cr.fill();
-
-        // Accent border
-        let (lr, lg, lb, _) = parse_color(&self.config.appearance.line_color);
-        self.cr.set_source_rgba(lr, lg, lb, 0.9);
-        self.cr.set_line_width(1.5);
-        draw_rounded_rect(self.cr, hud_x, hud_y, w, h, 6.0);
-        let _ = self.cr.stroke();
-
-        // Text
-        self.cr.set_source_rgba(0.97, 0.98, 0.99, 1.0);
-        self.cr.move_to(hud_x + pad_x, hud_y + pad_y);
-        pangocairo::functions::show_layout(self.cr, &layout);
-    }
-
-    /// Formats a 1D length measurement string (with optional secondary unit)
-    fn format_length(&self, px: u32) -> String {
-        let mut s = if self.config.units.show_pixel_unit {
-            format!("{} px", px)
+    pub fn format_length(&self, pixels: u32) -> String {
+        let show_px = self.config.units.show_pixel_unit;
+        let px_str = if show_px {
+            format!("{} px", pixels)
         } else {
-            format!("{}", px)
+            format!("{}", pixels)
         };
 
-        if let Some(sec) = self.format_secondary(px as f64) {
-            s.push_str(&format!(" ({})", sec));
+        if self.config.units.secondary_unit != SecondaryUnit::None {
+            let sec_str = self.calculate_secondary(pixels);
+            format!("{} ({})", px_str, sec_str)
+        } else {
+            px_str
         }
-        s
     }
 
-    /// Formats 2D width and height dimensions (e.g. "124 × 86 px")
-    fn format_dimensions(&self, w: u32, h: u32) -> String {
-        let mut s = if self.config.units.show_pixel_unit {
-            format!("{} × {} px", w, h)
+    pub fn format_dimensions(&self, width: u32, height: u32) -> String {
+        let show_px = self.config.units.show_pixel_unit;
+        let px_str = if show_px {
+            format!("{} × {} px", width, height)
         } else {
-            format!("{} × {}", w, h)
+            format!("{} × {}", width, height)
         };
 
-        if let (Some(sw), Some(sh)) = (
-            self.format_secondary(w as f64),
-            self.format_secondary(h as f64),
-        ) {
-            s.push_str(&format!(" ({} × {})", sw, sh));
+        if self.config.units.secondary_unit != SecondaryUnit::None {
+            let sec_w = self.calculate_secondary(width);
+            let sec_h = self.calculate_secondary(height);
+            format!("{} ({} × {})", px_str, sec_w, sec_h)
+        } else {
+            px_str
         }
-        s
     }
 
-    /// Converts pixels to secondary unit if enabled
-    fn format_secondary(&self, px: f64) -> Option<String> {
-        let dpi = self.config.units.screen_dpi.max(1.0);
+    fn calculate_secondary(&self, pixels: u32) -> String {
+        let dpi = self.config.units.screen_dpi;
+        let inches = pixels as f64 / dpi;
+
         match self.config.units.secondary_unit {
-            SecondaryUnit::None => None,
-            SecondaryUnit::Inch => Some(format!("{:.2} in", px / dpi)),
-            SecondaryUnit::Cm => Some(format!("{:.2} cm", (px / dpi) * 2.54)),
-            SecondaryUnit::Mm => Some(format!("{:.1} mm", (px / dpi) * 25.4)),
-            SecondaryUnit::Pt => Some(format!("{:.1} pt", (px / dpi) * 72.0)),
+            SecondaryUnit::None => String::new(),
+            SecondaryUnit::Inch => format!("{:.2} in", inches),
+            SecondaryUnit::Cm => format!("{:.2} cm", inches * 2.54),
+            SecondaryUnit::Mm => format!("{:.1} mm", inches * 25.4),
+            SecondaryUnit::Pt => format!("{:.1} pt", inches * 72.0),
         }
     }
-}
-
-/// Helper to draw rounded rectangle paths in Cairo
-fn draw_rounded_rect(cr: &Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
-    let r = r.min(w / 2.0).min(h / 2.0);
-    cr.new_sub_path();
-    cr.arc(x + w - r, y + r, r, -FRAC_PI_2, 0.0);
-    cr.arc(x + w - r, y + h - r, r, 0.0, FRAC_PI_2);
-    cr.arc(x + r, y + h - r, r, FRAC_PI_2, PI);
-    cr.arc(x + r, y + r, r, PI, 3.0 * FRAC_PI_2);
-    cr.close_path();
 }

@@ -3,7 +3,7 @@ use edged::monitor::{crop_image_if_needed, MonitorInfo, MonitorTarget};
 use edged::ruler::bounds::Rect;
 use edged::ruler::{EdgeDetector, RulerMode};
 use edged::ui::matches_key;
-use gtk4::gdk;
+use egui::Key;
 use image::{Rgba, RgbaImage};
 use std::sync::Arc;
 
@@ -52,16 +52,16 @@ fn test_mode_cycling() {
 
 #[test]
 fn test_key_matching() {
-    assert!(matches_key(&gdk::Key::Tab, "Tab"));
-    assert!(matches_key(&gdk::Key::Tab, "tab"));
-    assert!(matches_key(&gdk::Key::ISO_Left_Tab, "Tab"));
+    assert!(matches_key(&Key::Tab, "Tab"));
+    assert!(matches_key(&Key::Tab, "tab"));
 
-    assert!(matches_key(&gdk::Key::_1, "1"));
-    assert!(matches_key(&gdk::Key::_2, "2"));
-    assert!(matches_key(&gdk::Key::b, "b"));
-    assert!(matches_key(&gdk::Key::B, "b"));
-    assert!(matches_key(&gdk::Key::s, "S"));
-    assert!(!matches_key(&gdk::Key::s, "b"));
+    assert!(matches_key(&Key::Num1, "1"));
+    assert!(matches_key(&Key::Num2, "2"));
+    assert!(matches_key(&Key::B, "b"));
+    assert!(matches_key(&Key::B, "B"));
+    assert!(matches_key(&Key::S, "s"));
+    assert!(matches_key(&Key::S, "S"));
+    assert!(!matches_key(&Key::S, "b"));
 }
 
 #[test]
@@ -167,14 +167,12 @@ fn test_clipboard_formatting() {
 }
 
 #[test]
-fn test_cairo_surface_conversion() {
-    use edged::capture::rgba_to_cairo_surface;
-
+fn test_egui_color_image_conversion() {
     let mut img = RgbaImage::new(10, 10);
     img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
-    let surface = rgba_to_cairo_surface(&img).expect("Should convert to Cairo surface");
-    assert_eq!(surface.width(), 10);
-    assert_eq!(surface.height(), 10);
+    let size = [img.width() as usize, img.height() as usize];
+    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+    assert_eq!(color_image.size, [10, 10]);
 }
 
 #[test]

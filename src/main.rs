@@ -9,7 +9,7 @@ mod ui;
 use clap::Parser;
 use cli::Cli;
 use config::{Config, DefaultMode};
-use gtk4::prelude::*;
+use eframe::egui;
 use ruler::{EdgeDetector, RulerMode};
 use std::sync::Arc;
 
@@ -30,13 +30,7 @@ fn main() {
         config.monitor.target = mon.parse().unwrap();
     }
 
-    // Initialize GTK4 and Wayland display
-    if let Err(err) = gtk4::init() {
-        eprintln!("[edged] Warning: Failed to initialize GTK4 runtime: {}", err);
-    }
-
-    let display = gdk4::Display::default().expect("Wayland display not found");
-    let all_monitors = monitor::get_all_monitors(&display);
+    let all_monitors = monitor::get_all_monitors();
     let target_monitor = monitor::resolve_target_monitor(&config.monitor.target, &all_monitors).cloned();
 
     // Determine operating mode (CLI flags take priority, fallback to config.toml)
@@ -75,53 +69,45 @@ fn main() {
     };
 
     // If targeting a single monitor, crop multi-monitor screenshots to target geometry
-    let (screen_image, is_monitor_cropped) = if let Some(ref target) = target_monitor {
+    let screen_image = if let Some(ref target) = target_monitor {
         if config.monitor.crop_to_monitor {
-            let cropped = monitor::crop_image_if_needed(raw_image, target, &all_monitors, true);
-            (cropped, true)
+            monitor::crop_image_if_needed(raw_image, target, &all_monitors, true)
         } else {
-            (raw_image, false)
+            raw_image
         }
     } else {
-        (raw_image, false)
+        raw_image
     };
 
-    let target_monitor_name = target_monitor.map(|m| m.name);
-
-    // Convert captured frame to Cairo surface for rendering background
-    let cairo_surface = match capture::rgba_to_cairo_surface(&screen_image) {
-        Ok(s) => Arc::new(s),
-        Err(err) => {
-            eprintln!("[edged] Failed to create Cairo image surface: {}", err);
-            std::process::exit(1);
-        }
-    };
-
-    let detector = Arc::new(EdgeDetector::new(Arc::new(screen_image)));
+    let detector = Arc::new(EdgeDetector::new(Arc::new(screen_image.clone())));
     let config = Arc::new(config);
 
-    // Initialize GTK4 application for Wayland overlay
-    let app = gtk4::Application::builder()
-        .application_id("com.github.edged.screenruler")
-        .build();
+    // Launch egui / eframe application
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("Edged")
+            .with_decorations(false)
+            .with_transparent(true)
+            .with_fullscreen(true)
+            .with_always_on_top()
+            .with_active(true),
+        ..Default::default()
+    };
 
-    let config_clone = config.clone();
-    let detector_clone = detector.clone();
-    let surface_clone = cairo_surface.clone();
+    let app = ui::EdgedApp::new(
+        config,
+        detector,
+        Arc::new(screen_image),
+        mode,
+        initial_tolerance,
+    );
 
-    app.connect_activate(move |application| {
-        ui::create_and_show_overlay(
-            application,
-            config_clone.clone(),
-            detector_clone.clone(),
-            surface_clone.clone(),
-            mode,
-            initial_tolerance,
-            target_monitor_name.clone(),
-            is_monitor_cropped,
-        );
-    });
-
-    // Run GTK application without forwarding command-line arguments
-    app.run_with_args::<&str>(&[]);
+    if let Err(e) = eframe::run_native(
+        "Edged",
+        native_options,
+        Box::new(|_cc| Ok(Box::new(app))),
+    ) {
+        eprintln!("[edged] Error running egui application: {}", e);
+        std::process::exit(1);
+    }
 }

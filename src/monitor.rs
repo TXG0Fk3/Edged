@@ -1,4 +1,3 @@
-use gdk4::prelude::*;
 use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
@@ -214,45 +213,23 @@ fn detect_gnome_monitors() -> Result<Vec<MonitorInfo>, Box<dyn std::error::Error
     Ok(monitors)
 }
 
-/// Collects complete monitor list combining GDK Display info with compositor metadata
-pub fn get_all_monitors(display: &gdk4::Display) -> Vec<MonitorInfo> {
-    let comp_monitors = detect_compositor_monitors();
-    let gdk_list = display.monitors();
-    let n = gdk_list.n_items();
-
-    let mut result = Vec::new();
-
-    for i in 0..n {
-        if let Some(item) = gdk_list.item(i) {
-            if let Ok(m) = item.downcast::<gdk4::Monitor>() {
-                let connector = m.connector().map(|s| s.to_string()).unwrap_or_else(|| format!("monitor-{}", i));
-                let geom = m.geometry();
-                let scale = m.scale_factor() as f64;
-
-                let comp_match = comp_monitors.iter().find(|cm| cm.name.eq_ignore_ascii_case(&connector));
-
-                let is_focused = comp_match.map(|c| c.is_focused).unwrap_or(i == 0);
-                let is_primary = comp_match.map(|c| c.is_primary).unwrap_or(i == 0);
-
-                result.push(MonitorInfo {
-                    name: connector,
-                    x: geom.x(),
-                    y: geom.y(),
-                    width: geom.width() as u32,
-                    height: geom.height() as u32,
-                    scale,
-                    is_primary,
-                    is_focused,
-                });
-            }
-        }
+/// Collects complete monitor list from compositor metadata with fallback
+pub fn get_all_monitors() -> Vec<MonitorInfo> {
+    let monitors = detect_compositor_monitors();
+    if monitors.is_empty() {
+        vec![MonitorInfo {
+            name: "default".to_string(),
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale: 1.0,
+            is_primary: true,
+            is_focused: true,
+        }]
+    } else {
+        monitors
     }
-
-    if result.is_empty() && !comp_monitors.is_empty() {
-        return comp_monitors;
-    }
-
-    result
 }
 
 /// Resolves the target monitor based on user configuration or CLI override

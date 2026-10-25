@@ -2,585 +2,301 @@ pub mod renderer;
 
 use crate::clipboard::{copy_to_clipboard, format_measurement};
 use crate::config::Config;
-use crate::monitor::MonitorTarget;
 use crate::ruler::bounds::Rect;
 use crate::ruler::{EdgeDetector, EdgeMeasurement, RulerMode};
-use crate::ui::renderer::Renderer;
-use cairo::ImageSurface;
-use gtk4::gdk;
-use gtk4::glib;
-use gtk4::prelude::*;
-use gtk4_layer_shell::LayerShell;
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::ui::renderer::EguiRenderer;
+use eframe::egui;
+use image::RgbaImage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-struct AppState {
+/// Helper to match keyboard keys against configured shortcut string
+pub fn matches_key(key: &egui::Key, key_name: &str) -> bool {
+    let name = key_name.trim().to_ascii_lowercase();
+    match key {
+        egui::Key::Tab => name == "tab",
+        egui::Key::Escape => name == "esc" || name == "escape",
+        egui::Key::Num1 => name == "1",
+        egui::Key::Num2 => name == "2",
+        egui::Key::Num3 => name == "3",
+        egui::Key::Num4 => name == "4",
+        egui::Key::B => name == "b",
+        egui::Key::S => name == "s",
+        egui::Key::H => name == "h",
+        egui::Key::V => name == "v",
+        egui::Key::Q => name == "q",
+        egui::Key::Space => name == "space",
+        _ => false,
+    }
+}
+
+pub struct EdgedApp {
+    config: Arc<Config>,
+    detector: Arc<EdgeDetector>,
+    screen_image: Arc<RgbaImage>,
+    texture: Option<egui::TextureHandle>,
     mode: RulerMode,
     tolerance: u8,
-    cursor: (f64, f64),
-    shift_held: bool,
-    ctrl_held: bool,
-    drag_start: Option<(f64, f64)>,
+    cursor: egui::Pos2,
+    drag_start: Option<egui::Pos2>,
     pinned_rects: Vec<Rect>,
+    active_rect: Option<Rect>,
     measurement: EdgeMeasurement,
     tolerance_hud_until: Option<Instant>,
     mode_hud_until: Option<Instant>,
+    shift_held: bool,
+    ctrl_held: bool,
 }
 
-pub fn create_and_show_overlay(
-    app: &gtk4::Application,
-    config: Arc<Config>,
-    detector: Arc<EdgeDetector>,
-    surface: Arc<ImageSurface>,
-    mode: RulerMode,
-    initial_tolerance: u8,
-    target_monitor_name: Option<String>,
-    is_monitor_cropped: bool,
-) {
-    let display = gdk::Display::default().expect("Wayland display not found");
-
-    // CSS styling for full window transparency
-    let css_provider = gtk4::CssProvider::new();
-    css_provider.load_from_data("window { background-color: transparent; }");
-    gtk4::style_context_add_provider_for_display(
-        &display,
-        &css_provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-    );
-
-    let state = Rc::new(RefCell::new(AppState {
-        mode,
-        tolerance: initial_tolerance,
-        cursor: (0.0, 0.0),
-        shift_held: false,
-        ctrl_held: false,
-        drag_start: None,
-        pinned_rects: Vec::new(),
-        measurement: EdgeMeasurement::empty(0, 0),
-        tolerance_hud_until: None,
-        mode_hud_until: None,
-    }));
-
-    let layer_shell_supported = gtk4_layer_shell::is_supported();
-    let monitors = display.monitors();
-    let monitor_count = monitors.n_items();
-
-    if config.monitor.target == MonitorTarget::All {
-        if monitor_count == 0 {
-            build_overlay_window(
-                app,
-                None,
-                config.clone(),
-                detector.clone(),
-                surface.clone(),
-                state.clone(),
-                layer_shell_supported,
-                false,
-            );
-        } else {
-            for i in 0..monitor_count {
-                if let Some(item) = monitors.item(i) {
-                    if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
-                        build_overlay_window(
-                            app,
-                            Some(monitor),
-                            config.clone(),
-                            detector.clone(),
-                            surface.clone(),
-                            state.clone(),
-                            layer_shell_supported,
-                            false,
-                        );
-                    }
-                }
-            }
+impl EdgedApp {
+    pub fn new(
+        config: Arc<Config>,
+        detector: Arc<EdgeDetector>,
+        screen_image: Arc<RgbaImage>,
+        initial_mode: RulerMode,
+        initial_tolerance: u8,
+    ) -> Self {
+        Self {
+            config,
+            detector,
+            screen_image,
+            texture: None,
+            mode: initial_mode,
+            tolerance: initial_tolerance,
+            cursor: egui::Pos2::ZERO,
+            drag_start: None,
+            pinned_rects: Vec::new(),
+            active_rect: None,
+            measurement: EdgeMeasurement::empty(0, 0),
+            tolerance_hud_until: None,
+            mode_hud_until: None,
+            shift_held: false,
+            ctrl_held: false,
         }
-    } else {
-        // Target single monitor (focused, primary, or named connector)
-        let mut target_gdk_monitor: Option<gdk::Monitor> = None;
+    }
+}
 
-        if let Some(ref target_name) = target_monitor_name {
-            for i in 0..monitor_count {
-                if let Some(item) = monitors.item(i) {
-                    if let Ok(m) = item.downcast::<gdk::Monitor>() {
-                        if let Some(conn) = m.connector() {
-                            if conn.eq_ignore_ascii_case(target_name) {
-                                target_gdk_monitor = Some(m);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+impl eframe::App for EdgedApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
 
-        // Fall back to first monitor if specific connector was not found
-        if target_gdk_monitor.is_none() && monitor_count > 0 {
-            if let Some(item) = monitors.item(0) {
-                target_gdk_monitor = item.downcast::<gdk::Monitor>().ok();
-            }
-        }
+        // Ensure immediate repaints for continuous, silky smooth measurement feedback
+        ctx.request_repaint();
+        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
 
-        build_overlay_window(
-            app,
-            target_gdk_monitor,
-            config.clone(),
-            detector.clone(),
-            surface.clone(),
-            state.clone(),
-            layer_shell_supported,
-            is_monitor_cropped,
+        let pixels_per_point = ctx.pixels_per_point();
+        let screen_rect = ui.max_rect();
+        let painter = ui.painter().clone();
+
+        // 1. Draw freeze-frame desktop background
+        let texture = self.texture.get_or_insert_with(|| {
+            let size = [
+                self.screen_image.width() as usize,
+                self.screen_image.height() as usize,
+            ];
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, self.screen_image.as_raw());
+            ctx.load_texture("desktop_snapshot", color_image, egui::TextureOptions::NEAREST)
+        });
+
+        painter.image(
+            texture.id(),
+            screen_rect,
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
         );
-    }
-}
 
-fn build_overlay_window(
-    app: &gtk4::Application,
-    monitor: Option<gdk::Monitor>,
-    config: Arc<Config>,
-    detector: Arc<EdgeDetector>,
-    surface: Arc<ImageSurface>,
-    state: Rc<RefCell<AppState>>,
-    layer_shell_supported: bool,
-    is_monitor_cropped: bool,
-) {
-    let window = gtk4::ApplicationWindow::new(app);
-    window.set_decorated(false);
-
-    if layer_shell_supported {
-        window.init_layer_shell();
-        window.set_layer(gtk4_layer_shell::Layer::Overlay);
-        window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::Exclusive);
-        window.set_anchor(gtk4_layer_shell::Edge::Top, true);
-        window.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
-        window.set_anchor(gtk4_layer_shell::Edge::Left, true);
-        window.set_anchor(gtk4_layer_shell::Edge::Right, true);
-        window.set_namespace(Some("edged"));
-
-        if let Some(ref m) = monitor {
-            window.set_monitor(Some(m));
+        if self.config.appearance.overlay_opacity > 0.0 {
+            let dim_alpha = (self.config.appearance.overlay_opacity * 255.0).round() as u8;
+            painter.rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(dim_alpha));
         }
-    } else {
-        // Fallback for compositors that do not implement layer-shell (e.g. GNOME Mutter)
-        if let Some(ref m) = monitor {
-            window.fullscreen_on_monitor(m);
-        } else {
-            window.fullscreen();
-        }
-    }
 
-    // Set cursor to crosshair
-    let cursor = gdk::Cursor::from_name("crosshair", None);
-    window.set_cursor(cursor.as_ref());
+        // 2. Process modifiers and cursor position
+        ctx.input(|i| {
+            self.shift_held = i.modifiers.shift;
+            self.ctrl_held = i.modifiers.ctrl;
+            if let Some(pos) = i.pointer.hover_pos() {
+                self.cursor = pos;
+            }
+        });
 
-    let drawing_area = gtk4::DrawingArea::new();
-    drawing_area.set_hexpand(true);
-    drawing_area.set_vexpand(true);
+        // 3. Process keyboard input
+        let mut close_requested = false;
+        let mut mode_changed = false;
 
-    // Monitor geometry for global desktop coordinate mapping
-    let (monitor_x, monitor_y) = if is_monitor_cropped {
-        (0.0, 0.0)
-    } else if let Some(ref m) = monitor {
-        let geom = m.geometry();
-        (geom.x() as f64, geom.y() as f64)
-    } else {
-        (0.0, 0.0)
-    };
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Q) {
+                close_requested = true;
+            }
 
-    // Cairo Drawing
-    {
-        let config = config.clone();
-        let state = state.clone();
-        let surface = surface.clone();
-        let win = window.clone();
-
-        drawing_area.set_draw_func(move |_, cr, width, height| {
-            let st = state.borrow();
-            let renderer = Renderer::new(cr, &config);
-            let scale = win.scale_factor() as f64;
-
-            // Render background desktop screenshot + overlay tint
-            renderer.draw_background(
-                &surface,
-                monitor_x,
-                monitor_y,
-                scale,
-                width as f64,
-                height as f64,
-            );
-
-            let mode_hud_val = st.mode_hud_until.and_then(|until| {
-                if Instant::now() < until {
-                    Some(st.mode)
+            // Tab mode cycling
+            if matches_key(&egui::Key::Tab, &self.config.shortcuts.cycle_mode_key) && i.key_pressed(egui::Key::Tab) {
+                if self.shift_held {
+                    self.mode = self.mode.prev();
                 } else {
-                    None
+                    self.mode = self.mode.next();
                 }
-            });
+                mode_changed = true;
+            }
 
-            if st.mode == RulerMode::Bounds {
-                let active = st.drag_start.map(|start| {
-                    Rect::from_points(start.0, start.1, st.cursor.0, st.cursor.1)
-                });
-                renderer.draw_bounds(
-                    &st.pinned_rects,
-                    active,
-                    st.cursor,
-                    scale,
-                    st.shift_held,
-                    mode_hud_val,
-                );
-            } else {
-                let tol_hud_val = st.tolerance_hud_until.and_then(|until| {
-                    if Instant::now() < until {
-                        Some(st.tolerance)
+            // Direct mode number keys
+            if i.key_pressed(egui::Key::Num1) {
+                self.mode = RulerMode::Bounds;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::Num2) {
+                self.mode = RulerMode::Spacing;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::Num3) {
+                self.mode = RulerMode::Horizontal;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::Num4) {
+                self.mode = RulerMode::Vertical;
+                mode_changed = true;
+            }
+
+            // Alternative mnemonic letters
+            if i.key_pressed(egui::Key::B) {
+                self.mode = RulerMode::Bounds;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::S) {
+                self.mode = RulerMode::Spacing;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::H) {
+                self.mode = RulerMode::Horizontal;
+                mode_changed = true;
+            } else if i.key_pressed(egui::Key::V) {
+                self.mode = RulerMode::Vertical;
+                mode_changed = true;
+            }
+        });
+
+        if mode_changed {
+            self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
+        }
+
+        // 4. Mouse wheel scrolling (tolerance or mode cycle)
+        let scroll_y = ctx.input(|i| i.smooth_scroll_delta.y);
+        if scroll_y.abs() > 0.1 {
+            let cycles_mode = (self.shift_held && self.config.shortcuts.shift_scroll_cycles_mode)
+                || (self.ctrl_held && self.config.shortcuts.ctrl_scroll_cycles_mode);
+
+            if cycles_mode {
+                if scroll_y > 0.0 {
+                    self.mode = self.mode.next();
+                } else {
+                    self.mode = self.mode.prev();
+                }
+                self.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
+            } else if self.mode != RulerMode::Bounds {
+                let step = self.config.ruler.tolerance_step as i32;
+                let delta = if scroll_y > 0.0 { step } else { -step };
+                let new_tol = (self.tolerance as i32 + delta).clamp(1, 100) as u8;
+                self.tolerance = new_tol;
+                self.tolerance_hud_until = Some(Instant::now() + Duration::from_millis(1200));
+            }
+        }
+
+        // 5. Update edge detection measurements
+        if self.mode != RulerMode::Bounds {
+            let abs_x = (self.cursor.x * pixels_per_point).round() as u32;
+            let abs_y = (self.cursor.y * pixels_per_point).round() as u32;
+            self.measurement = self.detector.detect_edges(abs_x, abs_y, self.tolerance);
+        }
+
+        // 6. Handle clicks and bounds dragging
+        let right_clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary));
+        if right_clicked {
+            close_requested = true;
+        }
+
+        if self.mode == RulerMode::Bounds {
+            let primary_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+            let primary_down = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
+            let primary_released = ctx.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+
+            if primary_pressed {
+                self.drag_start = Some(self.cursor);
+            }
+
+            if primary_down && self.drag_start.is_some() {
+                let start = self.drag_start.unwrap();
+                self.active_rect = Some(Rect::from_points(
+                    start.x as f64,
+                    start.y as f64,
+                    self.cursor.x as f64,
+                    self.cursor.y as f64,
+                ));
+            }
+
+            if primary_released {
+                if let Some(rect) = self.active_rect.take() {
+                    if self.shift_held && self.config.bounds.shift_pins_bounds {
+                        self.pinned_rects.push(rect);
                     } else {
-                        None
-                    }
-                });
-                renderer.draw_spacing_ruler(
-                    &st.measurement,
-                    st.mode,
-                    monitor_x,
-                    monitor_y,
-                    scale,
-                    tol_hud_val,
-                    mode_hud_val,
-                );
-            }
-        });
-    }
-
-    // Mouse Motion Controller
-    {
-        let state = state.clone();
-        let detector = detector.clone();
-        let da = drawing_area.clone();
-        let win = window.clone();
-        let motion = gtk4::EventControllerMotion::new();
-
-        motion.connect_motion(move |_, x, y| {
-            let mut st = state.borrow_mut();
-            st.cursor = (x, y);
-
-            let scale = win.scale_factor() as f64;
-            let abs_x = ((monitor_x + x) * scale).round() as u32;
-            let abs_y = ((monitor_y + y) * scale).round() as u32;
-
-            if st.mode != RulerMode::Bounds {
-                st.measurement = detector.detect_edges(abs_x, abs_y, st.tolerance);
-            }
-
-            da.queue_draw();
-        });
-
-        window.add_controller(motion);
-    }
-
-    // Mouse Click Controller
-    {
-        let state = state.clone();
-        let config = config.clone();
-        let da = drawing_area.clone();
-        let app = app.clone();
-        let win = window.clone();
-        let click = gtk4::GestureClick::new();
-        click.set_button(0); // Capture all mouse buttons
-
-        click.connect_pressed({
-            let state = state.clone();
-            move |gesture, _, x, y| {
-                let button = gesture.current_button();
-                if button == gdk::BUTTON_PRIMARY {
-                    let mut st = state.borrow_mut();
-                    if st.mode == RulerMode::Bounds {
-                        st.drag_start = Some((x, y));
-                    }
-                }
-            }
-        });
-
-        click.connect_released(move |gesture, _, x, y| {
-            let button = gesture.current_button();
-
-            if button == gdk::BUTTON_SECONDARY {
-                // Right click cancels and exits
-                app.quit();
-                return;
-            }
-
-            if button == gdk::BUTTON_PRIMARY {
-                let mut st = state.borrow_mut();
-                let scale = win.scale_factor() as f64;
-
-                if st.mode == RulerMode::Bounds {
-                    if let Some(start) = st.drag_start {
-                        let rect = Rect::from_points(start.0, start.1, x, y);
-                        let w_px = (rect.width * scale).round() as u32;
-                        let h_px = (rect.height * scale).round() as u32;
-
-                        if st.shift_held && config.bounds.shift_pins_bounds {
-                            // Holding Shift: keep rectangle pinned to screen and continue measuring
-                            st.pinned_rects.push(rect);
-                            st.drag_start = None;
-                            da.queue_draw();
-                            return;
-                        }
-
-                        // Normal release: copy bounds measurement to clipboard and exit
+                        let w_px = (rect.width * pixels_per_point as f64).round() as u32;
+                        let h_px = (rect.height * pixels_per_point as f64).round() as u32;
                         let text = format_measurement(
                             RulerMode::Bounds,
                             w_px,
                             h_px,
-                            config.clipboard.format,
+                            self.config.clipboard.format,
                         );
                         copy_to_clipboard(&text);
-
-                        if config.general.close_on_copy {
-                            app.quit();
-                        }
-                    }
-                } else {
-                    // Spacing / Horizontal / Vertical modes: copy measurement and exit
-                    let text = format_measurement(
-                        st.mode,
-                        st.measurement.width,
-                        st.measurement.height,
-                        config.clipboard.format,
-                    );
-                    copy_to_clipboard(&text);
-
-                    if config.general.close_on_copy {
-                        app.quit();
-                    }
-                }
-            }
-        });
-
-        window.add_controller(click);
-    }
-
-    // Mouse Scroll Wheel Controller (Tolerance adjustment & Mode switching)
-    {
-        let state = state.clone();
-        let detector = detector.clone();
-        let config = config.clone();
-        let da = drawing_area.clone();
-        let win = window.clone();
-        let scroll = gtk4::EventControllerScroll::new(gtk4::EventControllerScrollFlags::VERTICAL);
-
-        scroll.connect_scroll(move |_, _, dy| {
-            let mut st = state.borrow_mut();
-
-            // Check if Shift+Scroll or Ctrl+Scroll should cycle modes
-            let cycle_mode = (st.shift_held && config.shortcuts.shift_scroll_cycles_mode)
-                || (st.ctrl_held && config.shortcuts.ctrl_scroll_cycles_mode);
-
-            if cycle_mode {
-                let new_mode = if dy < 0.0 {
-                    st.mode.prev()
-                } else if dy > 0.0 {
-                    st.mode.next()
-                } else {
-                    st.mode
-                };
-
-                if new_mode != st.mode {
-                    st.mode = new_mode;
-                    st.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
-                    st.tolerance_hud_until = None;
-
-                    if st.mode != RulerMode::Bounds {
-                        st.drag_start = None;
-                        let scale = win.scale_factor() as f64;
-                        let abs_x = ((monitor_x + st.cursor.0) * scale).round() as u32;
-                        let abs_y = ((monitor_y + st.cursor.1) * scale).round() as u32;
-                        st.measurement = detector.detect_edges(abs_x, abs_y, st.tolerance);
-                    }
-
-                    da.queue_draw();
-                }
-
-                return glib::Propagation::Stop;
-            }
-
-            // Normal scroll: adjust tolerance when in Spacing / Horizontal / Vertical modes
-            if st.mode != RulerMode::Bounds {
-                let step = config.ruler.tolerance_step as i32;
-                let current = st.tolerance as i32;
-                let new_tol = if dy < 0.0 {
-                    (current + step).min(100)
-                } else if dy > 0.0 {
-                    (current - step).max(1)
-                } else {
-                    current
-                } as u8;
-
-                st.tolerance = new_tol;
-                st.tolerance_hud_until = Some(Instant::now() + Duration::from_millis(1500));
-                st.mode_hud_until = None;
-
-                let scale = win.scale_factor() as f64;
-                let abs_x = ((monitor_x + st.cursor.0) * scale).round() as u32;
-                let abs_y = ((monitor_y + st.cursor.1) * scale).round() as u32;
-                st.measurement = detector.detect_edges(abs_x, abs_y, st.tolerance);
-
-                da.queue_draw();
-            }
-
-            glib::Propagation::Stop
-        });
-
-        window.add_controller(scroll);
-    }
-
-    // Keyboard Controller (Esc, Shift, Ctrl, and Mode Switch Shortcuts)
-    {
-        let state = state.clone();
-        let detector = detector.clone();
-        let config = config.clone();
-        let da = drawing_area.clone();
-        let app = app.clone();
-        let win = window.clone();
-        let key = gtk4::EventControllerKey::new();
-
-        key.connect_key_pressed({
-            let state = state.clone();
-            let detector = detector.clone();
-            let da = da.clone();
-            let app = app.clone();
-            let win = win.clone();
-            move |_, keyval, _, _| {
-                match keyval {
-                    gdk::Key::Escape | gdk::Key::q | gdk::Key::Q => {
-                        app.quit();
-                        glib::Propagation::Stop
-                    }
-                    gdk::Key::Shift_L | gdk::Key::Shift_R => {
-                        let mut st = state.borrow_mut();
-                        st.shift_held = true;
-                        da.queue_draw();
-                        glib::Propagation::Proceed
-                    }
-                    gdk::Key::Control_L | gdk::Key::Control_R => {
-                        let mut st = state.borrow_mut();
-                        st.ctrl_held = true;
-                        glib::Propagation::Proceed
-                    }
-                    _ => {
-                        // Check mode switching shortcuts
-                        let mut target_mode = None;
-
-                        if matches_key(&keyval, &config.shortcuts.cycle_mode_key) {
-                            let st = state.borrow();
-                            target_mode = Some(if st.shift_held {
-                                st.mode.prev()
-                            } else {
-                                st.mode.next()
-                            });
-                        } else if matches_key(&keyval, &config.shortcuts.mode_bounds_key)
-                            || matches_key(&keyval, &config.shortcuts.alt_mode_bounds_key)
-                        {
-                            target_mode = Some(RulerMode::Bounds);
-                        } else if matches_key(&keyval, &config.shortcuts.mode_spacing_key)
-                            || matches_key(&keyval, &config.shortcuts.alt_mode_spacing_key)
-                        {
-                            target_mode = Some(RulerMode::Spacing);
-                        } else if matches_key(&keyval, &config.shortcuts.mode_horizontal_key)
-                            || matches_key(&keyval, &config.shortcuts.alt_mode_horizontal_key)
-                        {
-                            target_mode = Some(RulerMode::Horizontal);
-                        } else if matches_key(&keyval, &config.shortcuts.mode_vertical_key)
-                            || matches_key(&keyval, &config.shortcuts.alt_mode_vertical_key)
-                        {
-                            target_mode = Some(RulerMode::Vertical);
-                        }
-
-                        if let Some(new_mode) = target_mode {
-                            let mut st = state.borrow_mut();
-                            if st.mode != new_mode {
-                                st.mode = new_mode;
-                                st.mode_hud_until =
-                                    Some(Instant::now() + Duration::from_millis(1500));
-                                st.tolerance_hud_until = None;
-
-                                if st.mode != RulerMode::Bounds {
-                                    st.drag_start = None;
-                                    let scale = win.scale_factor() as f64;
-                                    let abs_x = ((monitor_x + st.cursor.0) * scale).round() as u32;
-                                    let abs_y = ((monitor_y + st.cursor.1) * scale).round() as u32;
-                                    st.measurement =
-                                        detector.detect_edges(abs_x, abs_y, st.tolerance);
-                                }
-
-                                da.queue_draw();
-                            }
-                            glib::Propagation::Stop
-                        } else {
-                            glib::Propagation::Proceed
+                        if self.config.general.close_on_copy {
+                            close_requested = true;
                         }
                     }
                 }
+                self.drag_start = None;
             }
-        });
-
-        key.connect_key_released({
-            let state = state.clone();
-            let da = da.clone();
-            move |_, keyval, _, _| {
-                match keyval {
-                    gdk::Key::Shift_L | gdk::Key::Shift_R => {
-                        let mut st = state.borrow_mut();
-                        st.shift_held = false;
-                        da.queue_draw();
-                    }
-                    gdk::Key::Control_L | gdk::Key::Control_R => {
-                        let mut st = state.borrow_mut();
-                        st.ctrl_held = false;
-                    }
-                    _ => {}
+        } else {
+            let primary_clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+            if primary_clicked {
+                let text = format_measurement(
+                    self.mode,
+                    self.measurement.width,
+                    self.measurement.height,
+                    self.config.clipboard.format,
+                );
+                copy_to_clipboard(&text);
+                if self.config.general.close_on_copy {
+                    close_requested = true;
                 }
-            }
-        });
-
-        window.add_controller(key);
-    }
-
-    window.set_child(Some(&drawing_area));
-    window.present();
-}
-
-/// Helper function to match a pressed key against a configured shortcut string
-pub fn matches_key(keyval: &gdk::Key, configured: &str) -> bool {
-    let cfg = configured.trim();
-    if cfg.is_empty() {
-        return false;
-    }
-
-    // Special check for Tab / Shift+Tab
-    if cfg.eq_ignore_ascii_case("tab")
-        && (*keyval == gdk::Key::Tab || *keyval == gdk::Key::ISO_Left_Tab)
-    {
-        return true;
-    }
-
-    // Check by GDK key name (e.g. "Tab", "Escape", "space", "F1")
-    if let Some(target) = gdk::Key::from_name(cfg) {
-        if *keyval == target {
-            return true;
-        }
-    }
-
-    // Check single character case-insensitively
-    if let Some(ch) = keyval.to_unicode() {
-        if cfg.chars().count() == 1 {
-            let target_ch = cfg.chars().next().unwrap();
-            if ch.eq_ignore_ascii_case(&target_ch) {
-                return true;
             }
         }
-    }
 
-    false
+        // 7. Render UI overlays
+        let now = Instant::now();
+        let tol_hud = self
+            .tolerance_hud_until
+            .filter(|&until| now < until)
+            .map(|_| self.tolerance);
+        let mode_hud = self
+            .mode_hud_until
+            .filter(|&until| now < until)
+            .map(|_| self.mode);
+
+        let renderer = EguiRenderer::new(&painter, self.config.clone(), pixels_per_point);
+
+        if self.mode == RulerMode::Bounds {
+            renderer.draw_bounds(
+                &self.pinned_rects,
+                self.active_rect,
+                self.cursor,
+                self.shift_held,
+                mode_hud,
+            );
+        } else {
+            renderer.draw_measurement(
+                self.mode,
+                self.cursor,
+                &self.measurement,
+                tol_hud,
+                mode_hud,
+            );
+        }
+
+        if close_requested {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
 }

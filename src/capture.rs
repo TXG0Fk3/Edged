@@ -357,33 +357,6 @@ fn capture_via_custom_command(
     result
 }
 
-/// Converts an RgbaImage to a Cairo ImageSurface for hardware-accelerated rendering
-pub fn rgba_to_cairo_surface(img: &RgbaImage) -> Result<cairo::ImageSurface, Box<dyn std::error::Error>> {
-    let (width, height) = img.dimensions();
-    let mut surface = cairo::ImageSurface::create(cairo::Format::Rgb24, width as i32, height as i32)?;
-    let stride = surface.stride() as usize;
-    {
-        let mut data = surface
-            .data()
-            .map_err(|e| format!("Failed to borrow surface data: {:?}", e))?;
-        let raw = img.as_raw();
-        for y in 0..height as usize {
-            let src_row = y * (width as usize) * 4;
-            let dst_row = y * stride;
-            for x in 0..width as usize {
-                let src_idx = src_row + x * 4;
-                let dst_idx = dst_row + x * 4;
-                // Cairo Rgb24 on host endianness (little-endian x86_64: BGRA)
-                data[dst_idx] = raw[src_idx + 2];     // B
-                data[dst_idx + 1] = raw[src_idx + 1]; // G
-                data[dst_idx + 2] = raw[src_idx];     // R
-                data[dst_idx + 3] = 0xFF;             // Unused / Alpha
-            }
-        }
-    }
-    Ok(surface)
-}
-
 /// Converts a file:// URI to a PathBuf with percent-decoding
 fn uri_to_path(uri: &str) -> Option<PathBuf> {
     let stripped = uri.strip_prefix("file://")?;

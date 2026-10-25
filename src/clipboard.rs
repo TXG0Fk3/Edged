@@ -1,6 +1,5 @@
 use crate::config::CopyFormat;
 use crate::ruler::RulerMode;
-use gdk4::prelude::*;
 use std::process::Command;
 
 pub fn format_measurement(
@@ -29,12 +28,12 @@ pub fn format_measurement(
 }
 
 pub fn copy_to_clipboard(text: &str) {
-    // 1. Set text on the active GTK4 display clipboard if available
-    if let Some(display) = gdk4::Display::default() {
-        display.clipboard().set_text(text);
+    // 1. Copy via arboard (cross-platform / Wayland data-control)
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        let _ = clipboard.set_text(text);
     }
 
-    // 2. Spawn `wl-copy` to ensure persistence across Wayland compositors even after process exit
+    // 2. Spawn `wl-copy` fallback to ensure persistence across Wayland compositors
     let _ = Command::new("wl-copy")
         .arg("--")
         .arg(text)
