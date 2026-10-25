@@ -7,7 +7,7 @@ set -ex
 
 # Ensure version variables exist
 if [ -z "$VERSION" ]; then
-    TODAY=$(date -u +'%Y.%m.%d')
+    TODAY=$(date -u +'%Y.%m%d')
     TODAY_RELEASES=$(git tag -l "v${TODAY}*" 2>/dev/null | wc -l || echo 0)
     RELEASE_COUNT=$((TODAY_RELEASES + 1))
     VERSION="v${TODAY}.${RELEASE_COUNT}"
@@ -23,7 +23,7 @@ sed -i "s/^version = \".*\"/version = \"${CLEAN_VERSION}\"/" Cargo.toml
 cargo test --release
 
 # 2. Build optimized release binary
-cargo build --release --locked
+cargo build --release
 strip target/release/edged
 
 # Prepare output directory
