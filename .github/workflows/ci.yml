@@ -1,0 +1,44 @@
+name: CI Test Suite
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit & Integration Tests (Arch Linux)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    steps:
+      - name: Initialize Arch Linux & Dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm base-devel git rust cargo
+          useradd user -G wheel && echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown user -R ..
+          chown user -R /tmp
+          git config --global --add safe.directory '*'
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cargo Check
+        run: cargo check --all-targets --verbose
+
+      - name: Cargo Clippy (Zero Warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Unit & Integration Test Suite
+        run: cargo test --all-targets --verbose -- --nocapture

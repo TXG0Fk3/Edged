@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 
 /// Target monitor for ruler overlay
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum MonitorTarget {
     /// Target the currently active / focused monitor (recommended default)
+    #[default]
     Focused,
     /// Span ruler overlay across all connected monitors
     All,
@@ -15,12 +16,6 @@ pub enum MonitorTarget {
     /// Target a specific monitor connector (e.g. "DP-1", "HDMI-A-1", "eDP-1")
     #[serde(untagged)]
     Named(String),
-}
-
-impl Default for MonitorTarget {
-    fn default() -> Self {
-        MonitorTarget::Focused
-    }
 }
 
 impl std::str::FromStr for MonitorTarget {

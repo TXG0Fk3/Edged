@@ -564,34 +564,55 @@ pub fn parse_color(color_str: &str) -> (f64, f64, f64, f64) {
         }
     }
 
-    if s.starts_with('#') {
-        let hex = &s[1..];
+    if let Some(hex) = s.strip_prefix('#') {
         match hex.len() {
             3 => {
-                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).unwrap_or(0) as f64 / 255.0;
-                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).unwrap_or(0) as f64 / 255.0;
-                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).unwrap_or(0) as f64 / 255.0;
-                return (r, g, b, 1.0);
+                if let (Ok(r), Ok(g), Ok(b)) = (
+                    u8::from_str_radix(&hex[0..1].repeat(2), 16),
+                    u8::from_str_radix(&hex[1..2].repeat(2), 16),
+                    u8::from_str_radix(&hex[2..3].repeat(2), 16),
+                ) {
+                    return (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0);
+                }
             }
             4 => {
-                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).unwrap_or(0) as f64 / 255.0;
-                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).unwrap_or(0) as f64 / 255.0;
-                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).unwrap_or(0) as f64 / 255.0;
-                let a = u8::from_str_radix(&hex[3..4].repeat(2), 16).unwrap_or(255) as f64 / 255.0;
-                return (r, g, b, a);
+                if let (Ok(r), Ok(g), Ok(b), Ok(a)) = (
+                    u8::from_str_radix(&hex[0..1].repeat(2), 16),
+                    u8::from_str_radix(&hex[1..2].repeat(2), 16),
+                    u8::from_str_radix(&hex[2..3].repeat(2), 16),
+                    u8::from_str_radix(&hex[3..4].repeat(2), 16),
+                ) {
+                    return (
+                        r as f64 / 255.0,
+                        g as f64 / 255.0,
+                        b as f64 / 255.0,
+                        a as f64 / 255.0,
+                    );
+                }
             }
             6 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64 / 255.0;
-                let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64 / 255.0;
-                let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64 / 255.0;
-                return (r, g, b, 1.0);
+                if let (Ok(r), Ok(g), Ok(b)) = (
+                    u8::from_str_radix(&hex[0..2], 16),
+                    u8::from_str_radix(&hex[2..4], 16),
+                    u8::from_str_radix(&hex[4..6], 16),
+                ) {
+                    return (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0);
+                }
             }
             8 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64 / 255.0;
-                let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64 / 255.0;
-                let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64 / 255.0;
-                let a = u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) as f64 / 255.0;
-                return (r, g, b, a);
+                if let (Ok(r), Ok(g), Ok(b), Ok(a)) = (
+                    u8::from_str_radix(&hex[0..2], 16),
+                    u8::from_str_radix(&hex[2..4], 16),
+                    u8::from_str_radix(&hex[4..6], 16),
+                    u8::from_str_radix(&hex[6..8], 16),
+                ) {
+                    return (
+                        r as f64 / 255.0,
+                        g as f64 / 255.0,
+                        b as f64 / 255.0,
+                        a as f64 / 255.0,
+                    );
+                }
             }
             _ => {}
         }

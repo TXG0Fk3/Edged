@@ -253,11 +253,9 @@ pub fn prune_old_logs(dir: &Path, retention_days: u32) -> (usize, u64) {
                 }
             }
 
-            if should_delete {
-                if fs::remove_file(&path).is_ok() {
-                    files_removed += 1;
-                    bytes_freed += file_size;
-                }
+            if should_delete && fs::remove_file(&path).is_ok() {
+                files_removed += 1;
+                bytes_freed += file_size;
             }
         }
     }
@@ -385,7 +383,7 @@ pub fn format_timestamp(now: SystemTime) -> (String, String) {
         (date_str, timestamp_str)
     } else {
         // Fallback civil day calculation
-        let mut days = (secs / 86400) as i64;
+        let mut days = secs / 86400;
         let time_of_day = (secs % 86400) as u32;
         let hour = time_of_day / 3600;
         let min = (time_of_day % 3600) / 60;

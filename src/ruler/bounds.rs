@@ -35,4 +35,10 @@ impl Rect {
     pub fn center(&self) -> (f64, f64) {
         (self.x + self.width / 2.0, self.y + self.height / 2.0)
     }
+
+    /// Returns true if the given point (px, py) lies within this rectangle
+    #[allow(dead_code)]
+    pub fn contains(&self, px: f64, py: f64) -> bool {
+        px >= self.x && px <= self.x + self.width && py >= self.y && py <= self.y + self.height
+    }
 }

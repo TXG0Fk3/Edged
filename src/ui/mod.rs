@@ -279,14 +279,15 @@ impl eframe::App for EdgedApp {
                 self.drag_start = Some(self.cursor);
             }
 
-            if primary_down && self.drag_start.is_some() {
-                let start = self.drag_start.unwrap();
-                self.active_rect = Some(Rect::from_points(
-                    start.x as f64,
-                    start.y as f64,
-                    self.cursor.x as f64,
-                    self.cursor.y as f64,
-                ));
+            if primary_down {
+                if let Some(start) = self.drag_start {
+                    self.active_rect = Some(Rect::from_points(
+                        start.x as f64,
+                        start.y as f64,
+                        self.cursor.x as f64,
+                        self.cursor.y as f64,
+                    ));
+                }
             }
 
             if primary_released {

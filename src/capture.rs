@@ -318,7 +318,7 @@ pub fn find_newest_image_in_dir(dir: &Path) -> Option<PathBuf> {
             }
         }
     }
-    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
     candidates.first().map(|(p, _)| p.clone())
 }
 
