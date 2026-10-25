@@ -1,6 +1,6 @@
 {
-  "version": "v2026.1025.3",
-  "clean_version": "2026.1025.3",
-  "url": "https://github.com/TXG0Fk3/Edged/releases/download/v2026.1025.3/edged-v2026.1025.3-x86_64-linux.tar.gz",
-  "sha256": "42fee2969bdd8a1b5b8edaee919db199d0b8002a9e431e28af23184692a1a7ed"
+  "version": "v2026.1025.4",
+  "clean_version": "2026.1025.4",
+  "url": "https://github.com/TXG0Fk3/Edged/releases/download/v2026.1025.4/edged-v2026.1025.4-x86_64-linux.tar.gz",
+  "sha256": "28f2584f03698546c904d118766bb40264f2f984789ff09df06572ef7e8b6263"
 }
