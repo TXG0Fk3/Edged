@@ -37,12 +37,12 @@
       };
 
       nixosModules = {
-        default = import ./nix/modules/nixos.nix;
+        default = import ./nix/modules/nixos.nix { inherit self; };
         edged = self.nixosModules.default;
       };
 
       homeManagerModules = {
-        default = import ./nix/modules/home-manager.nix;
+        default = import ./nix/modules/home-manager.nix { inherit self; };
         edged = self.homeManagerModules.default;
       };
 

@@ -118,7 +118,7 @@ $XDG_CONFIG_HOME/edged/config.toml  (typically ~/.config/edged/config.toml)
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `programs.edged.enable` | `bool` | `false` | Whether to enable Edged screen ruler. |
-| `programs.edged.package` | `package` | `pkgs.edged` | The package to install (defaults to the flake derivation). |
+| `programs.edged.package` | `package` | Flake package | The package to install (automatically resolves to the flake derivation without requiring an overlay or `pkgs.edged`). |
 | `programs.edged.settings` | `attrsOf anything` | `{ }` | Declarative configuration serialized to TOML via `pkgs.formats.toml`. |
 
 If `programs.edged.settings` is left empty (`{ }`), no configuration file is written, allowing Edged to use its internal defaults or a manual file.
