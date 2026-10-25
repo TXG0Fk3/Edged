@@ -61,13 +61,14 @@ impl<'a> Renderer<'a> {
         monitor_y: f64,
         scale_factor: f64,
         tolerance_hud: Option<u8>,
+        mode_hud: Option<RulerMode>,
     ) {
         // Map global image coordinates to window-local logical coordinates
         let cx = (measurement.cursor_x as f64) / scale_factor - monitor_x;
         let cy = (measurement.cursor_y as f64) / scale_factor - monitor_y;
         let left_x = (measurement.left_x as f64) / scale_factor - monitor_x;
         let right_x = (measurement.right_x as f64) / scale_factor - monitor_x;
-        let top_y = (measurement.top_y as f64) / scale_factor - monitor_y;
+        let top_y = (measurement.top_y as f64) / scale_factor - monitor_x;
         let bottom_y = (measurement.bottom_y as f64) / scale_factor - monitor_y;
 
         let feet_size = self.config.ruler.feet_size;
@@ -176,6 +177,11 @@ impl<'a> Renderer<'a> {
         if let Some(tol) = tolerance_hud {
             self.draw_tolerance_hud(cx, cy, tol);
         }
+
+        // 5. Mode switch HUD (displayed when mode changes)
+        if let Some(active_mode) = mode_hud {
+            self.draw_mode_hud(cx, cy, active_mode);
+        }
     }
 
     /// Renders Bounds mode rectangles (active dragging rectangle + Shift-pinned rectangles)
@@ -186,6 +192,7 @@ impl<'a> Renderer<'a> {
         cursor: (f64, f64),
         scale_factor: f64,
         shift_held: bool,
+        mode_hud: Option<RulerMode>,
     ) {
         let (br, bg, bb, ba) = parse_color(&self.config.appearance.bounds_border_color);
         let (fr, fg, fb, fa) = parse_color(&self.config.appearance.bounds_fill_color);
@@ -248,6 +255,11 @@ impl<'a> Renderer<'a> {
         // Visual hint badge when Shift key is held
         if shift_held && self.config.bounds.shift_pins_bounds {
             self.draw_badge(cursor.0, cursor.1 - 24.0, "[Shift] Pin");
+        }
+
+        // Mode switch HUD
+        if let Some(active_mode) = mode_hud {
+            self.draw_mode_hud(cursor.0, cursor.1, active_mode);
         }
     }
 
@@ -359,6 +371,43 @@ impl<'a> Renderer<'a> {
         self.cr.set_source_rgba(lr, lg, lb, 1.0);
         self.cr.rectangle(hud_x + pad, bar_y, progress_w, bar_h);
         let _ = self.cr.fill();
+    }
+
+    /// Renders mode switch HUD badge when switching modes
+    fn draw_mode_hud(&self, cx: f64, cy: f64, mode: RulerMode) {
+        let text = format!("Mode: {}", mode.name());
+        let hud_x = cx + 20.0;
+        let hud_y = cy - 42.0;
+
+        let layout = pangocairo::functions::create_layout(self.cr);
+        let mut font_desc = FontDescription::from_string(&self.config.appearance.label_font_family);
+        font_desc.set_size((11.5 * pango::SCALE as f64) as i32);
+        font_desc.set_weight(pango::Weight::Bold);
+        layout.set_font_description(Some(&font_desc));
+        layout.set_text(&text);
+
+        let (tw, th) = layout.pixel_size();
+        let pad_x = 9.0;
+        let pad_y = 5.0;
+        let w = (tw as f64) + pad_x * 2.0;
+        let h = (th as f64) + pad_y * 2.0;
+
+        // Background
+        self.cr.set_source_rgba(0.06, 0.09, 0.16, 0.95);
+        draw_rounded_rect(self.cr, hud_x, hud_y, w, h, 6.0);
+        let _ = self.cr.fill();
+
+        // Accent border
+        let (lr, lg, lb, _) = parse_color(&self.config.appearance.line_color);
+        self.cr.set_source_rgba(lr, lg, lb, 0.9);
+        self.cr.set_line_width(1.5);
+        draw_rounded_rect(self.cr, hud_x, hud_y, w, h, 6.0);
+        let _ = self.cr.stroke();
+
+        // Text
+        self.cr.set_source_rgba(0.97, 0.98, 0.99, 1.0);
+        self.cr.move_to(hud_x + pad_x, hud_y + pad_y);
+        pangocairo::functions::show_layout(self.cr, &layout);
     }
 
     /// Formats a 1D length measurement string (with optional secondary unit)

@@ -1,6 +1,8 @@
 use edged::config::{parse_color, Config, CopyFormat, DEFAULT_CONFIG_COMMENTED};
 use edged::ruler::bounds::Rect;
 use edged::ruler::{EdgeDetector, RulerMode};
+use edged::ui::matches_key;
+use gtk4::gdk;
 use image::{Rgba, RgbaImage};
 use std::sync::Arc;
 
@@ -12,6 +14,11 @@ fn test_default_config_validity() {
     assert!(cfg.ruler.draw_feet);
     assert!(cfg.bounds.shift_pins_bounds);
     assert!(cfg.general.close_on_copy);
+    assert_eq!(cfg.shortcuts.cycle_mode_key, "Tab");
+    assert_eq!(cfg.shortcuts.mode_bounds_key, "1");
+    assert_eq!(cfg.shortcuts.mode_spacing_key, "2");
+    assert!(cfg.shortcuts.shift_scroll_cycles_mode);
+    assert!(cfg.shortcuts.ctrl_scroll_cycles_mode);
 }
 
 #[test]
@@ -25,6 +32,33 @@ fn test_load_or_create_config() {
 
     // Clean up
     let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_mode_cycling() {
+    assert_eq!(RulerMode::Spacing.next(), RulerMode::Bounds);
+    assert_eq!(RulerMode::Bounds.next(), RulerMode::Horizontal);
+    assert_eq!(RulerMode::Horizontal.next(), RulerMode::Vertical);
+    assert_eq!(RulerMode::Vertical.next(), RulerMode::Spacing);
+
+    assert_eq!(RulerMode::Spacing.prev(), RulerMode::Vertical);
+    assert_eq!(RulerMode::Vertical.prev(), RulerMode::Horizontal);
+    assert_eq!(RulerMode::Horizontal.prev(), RulerMode::Bounds);
+    assert_eq!(RulerMode::Bounds.prev(), RulerMode::Spacing);
+}
+
+#[test]
+fn test_key_matching() {
+    assert!(matches_key(&gdk::Key::Tab, "Tab"));
+    assert!(matches_key(&gdk::Key::Tab, "tab"));
+    assert!(matches_key(&gdk::Key::ISO_Left_Tab, "Tab"));
+
+    assert!(matches_key(&gdk::Key::_1, "1"));
+    assert!(matches_key(&gdk::Key::_2, "2"));
+    assert!(matches_key(&gdk::Key::b, "b"));
+    assert!(matches_key(&gdk::Key::B, "b"));
+    assert!(matches_key(&gdk::Key::s, "S"));
+    assert!(!matches_key(&gdk::Key::s, "b"));
 }
 
 #[test]

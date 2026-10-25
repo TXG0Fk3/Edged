@@ -11,13 +11,15 @@ pub enum DefaultMode {
     Vertical,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureMethod {
+    #[default]
     Auto,
     Grim,
     Portal,
     Command,
+    Custom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,9 +43,16 @@ pub enum CopyFormat {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralConfig {
     pub default_mode: DefaultMode,
+    #[serde(default)]
     pub capture_method: CaptureMethod,
+    #[serde(default)]
     pub custom_capture_command: String,
+    #[serde(default = "default_close_on_copy")]
     pub close_on_copy: bool,
+}
+
+fn default_close_on_copy() -> bool {
+    true
 }
 
 impl Default for GeneralConfig {
@@ -53,6 +62,56 @@ impl Default for GeneralConfig {
             capture_method: CaptureMethod::Auto,
             custom_capture_command: String::new(),
             close_on_copy: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureConfig {
+    pub method: CaptureMethod,
+    pub command: String,
+    pub timeout_seconds: u64,
+}
+
+impl Default for CaptureConfig {
+    fn default() -> Self {
+        Self {
+            method: CaptureMethod::Auto,
+            command: String::new(),
+            timeout_seconds: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShortcutsConfig {
+    pub cycle_mode_key: String,
+    pub mode_bounds_key: String,
+    pub mode_spacing_key: String,
+    pub mode_horizontal_key: String,
+    pub mode_vertical_key: String,
+    pub alt_mode_bounds_key: String,
+    pub alt_mode_spacing_key: String,
+    pub alt_mode_horizontal_key: String,
+    pub alt_mode_vertical_key: String,
+    pub shift_scroll_cycles_mode: bool,
+    pub ctrl_scroll_cycles_mode: bool,
+}
+
+impl Default for ShortcutsConfig {
+    fn default() -> Self {
+        Self {
+            cycle_mode_key: "Tab".to_string(),
+            mode_bounds_key: "1".to_string(),
+            mode_spacing_key: "2".to_string(),
+            mode_horizontal_key: "3".to_string(),
+            mode_vertical_key: "4".to_string(),
+            alt_mode_bounds_key: "b".to_string(),
+            alt_mode_spacing_key: "s".to_string(),
+            alt_mode_horizontal_key: "h".to_string(),
+            alt_mode_vertical_key: "v".to_string(),
+            shift_scroll_cycles_mode: true,
+            ctrl_scroll_cycles_mode: true,
         }
     }
 }
@@ -167,6 +226,10 @@ pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
     #[serde(default)]
+    pub capture: CaptureConfig,
+    #[serde(default)]
+    pub shortcuts: ShortcutsConfig,
+    #[serde(default)]
     pub ruler: RulerConfig,
     #[serde(default)]
     pub bounds: BoundsConfig,
@@ -187,20 +250,51 @@ pub const DEFAULT_CONFIG_COMMENTED: &str = r##"# ===============================
 # Default mode when starting without arguments: "bounds", "spacing", "horizontal", "vertical"
 default_mode = "spacing"
 
-# Screen capture method: "auto", "grim", "portal", "command"
-# - "auto": Tries 'grim' first (instant on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
-# - "grim": Forces using the 'grim' utility
-# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
-# - "command": Executes a custom shell command specified below
-capture_method = "auto"
-
-# Custom shell command when capture_method = "command"
-# Use %s where the output temporary PNG path should be inserted.
-# Example: "wayshot --file %s"
-custom_capture_command = ""
-
 # Whether to close the application immediately after copying a measurement
 close_on_copy = true
+
+[capture]
+# Screen capture method: "auto", "grim", "portal", "custom"
+# - "auto": Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
+# - "grim": Forces using the 'grim' utility
+# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
+# - "custom": Executes the custom command specified below
+method = "auto"
+
+# Custom shell command when method = "custom"
+# Use %s where the output temporary PNG path will be passed.
+# Examples:
+#   command = "grim -t png %s"
+#   command = "wayshot -f %s"
+#   command = "hyprshot -m output -f %s"
+#   command = "spectacle -b -n -o %s"
+command = ""
+
+# Timeout in seconds for custom capture command execution
+timeout_seconds = 5
+
+[shortcuts]
+# Key to cycle through modes in order: "Tab" (or any key name like "grave", "space")
+# Tip: Shift + Tab will cycle in reverse!
+cycle_mode_key = "Tab"
+
+# Direct number keys to switch modes
+mode_bounds_key = "1"
+mode_spacing_key = "2"
+mode_horizontal_key = "3"
+mode_vertical_key = "4"
+
+# Alternative mnemonic letter keys to switch modes
+alt_mode_bounds_key = "b"
+alt_mode_spacing_key = "s"
+alt_mode_horizontal_key = "h"
+alt_mode_vertical_key = "v"
+
+# Allow Shift + Mouse Scroll to cycle through modes during runtime
+shift_scroll_cycles_mode = true
+
+# Allow Ctrl + Mouse Scroll to cycle through modes during runtime
+ctrl_scroll_cycles_mode = true
 
 [ruler]
 # Initial tolerance percentage for edge detection (1 to 100)

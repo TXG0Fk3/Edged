@@ -13,6 +13,13 @@
 ## ✨ Features
 
 - ⚡ **One-Shot Activation Model**: Does **not** run as a persistent background daemon eating CPU or RAM. Launches instantly via terminal command and exits as soon as you copy your measurement or hit <kbd>Esc</kbd>.
+- 🔀 **Dynamic Mode Switching During Use**:
+  - Switch modes on the fly using <kbd>Tab</kbd> (or <kbd>Shift</kbd> + <kbd>Tab</kbd>).
+  - Direct number keys: <kbd>1</kbd> (Bounds), <kbd>2</kbd> (Spacing), <kbd>3</kbd> (Horizontal), <kbd>4</kbd> (Vertical).
+  - Mnemonic letter keys: <kbd>B</kbd>, <kbd>S</kbd>, <kbd>H</kbd>, <kbd>V</kbd>.
+  - **Shift + Scroll** or **Ctrl + Scroll** to cycle modes seamlessly with the mouse wheel!
+  - Fully configurable keybindings in `~/.config/edged/config.toml`.
+  - Floating HUD notification shows the active mode when changed.
 - 🎯 **Real-time Edge Detection**: Walks outwards from the cursor across 4 cardinal directions (up, down, left, right) based on Euclidean color differences.
 - 🔄 **Dynamic Scroll-wheel Tolerance**: Scroll your mouse wheel up or down to adjust edge sensitivity in real-time with an instant HUD progress indicator.
 - 📦 **Bounds Mode**: Click and drag to measure rectangular regions displaying `Width × Height`.
@@ -21,6 +28,7 @@
 - 📋 **Click to Copy**: Primary click copies the measurement directly to your Wayland clipboard (`wl-clipboard` / GTK) in configurable formats (`compact`, `verbose`, or `css`).
 - 🖥️ **Native Wayland & Multi-Monitor**: Uses `wlr-layer-shell` on wlroots compositors (Hyprland, Sway, River) and seamless overlay fallback on GNOME Mutter. Full support for fractional scaling and multi-monitor setups.
 - 📸 **Freeze-frame Rendering (No Black Screen)**: Captures the screen before presenting the overlay, drawing the frozen desktop snapshot underneath the ruler with zero flicker.
+- 🛠️ **Configurable Screenshot Tools**: Supports `grim`, `xdg-desktop-portal` (PipeWire), or any custom command (e.g. `wayshot`, `hyprshot`, `spectacle`).
 - ⚙️ **Fully Configurable**: Generates a documented `~/.config/edged/config.toml` file automatically on first run.
 
 ---
@@ -53,7 +61,10 @@ edged --version                     # Print version
 | Control | Action |
 | :--- | :--- |
 | **Move Cursor** | Updates edge detection lines or bounding box in real time |
-| **Mouse Wheel Up / Down** | Dynamically increases or decreases edge detection tolerance |
+| **Mouse Wheel Up / Down** | Adjusts edge detection tolerance (Spacing/Horizontal/Vertical modes) |
+| **Shift + Scroll** *(or Ctrl+Scroll)* | **Cycles modes on the fly** (`Spacing` ↔ `Bounds` ↔ `Horizontal` ↔ `Vertical`) |
+| **Tab / Shift + Tab** | **Cycles mode forward / backward** |
+| **1 / 2 / 3 / 4** *(or B / S / H / V)* | **Directly switches to Bounds, Spacing, Horizontal, or Vertical** |
 | **Left Click** | Copies active measurement to clipboard and exits |
 | **Shift + Release** *(Bounds)* | Pins the rectangle to screen to measure additional regions |
 | **Esc / Q Key** | Closes Edged immediately without copying |
@@ -112,18 +123,51 @@ Full configuration options:
 # Default mode when starting without arguments: "bounds", "spacing", "horizontal", "vertical"
 default_mode = "spacing"
 
-# Screen capture method: "auto", "grim", "portal", "command"
-# - "auto": Tries 'grim' first (instant on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
-# - "grim": Forces using the 'grim' utility
-# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
-# - "command": Executes a custom shell command specified below
-capture_method = "auto"
-
-# Custom shell command when capture_method = "command" (use %s for output path)
-custom_capture_command = ""
-
 # Whether to close the application immediately after copying a measurement
 close_on_copy = true
+
+[capture]
+# Screen capture method: "auto", "grim", "portal", "custom"
+# - "auto": Tries 'grim' first (fastest on wlroots/Hyprland/Sway), falls back to xdg-desktop-portal (GNOME/KDE)
+# - "grim": Forces using the 'grim' utility
+# - "portal": Forces using XDG Desktop Portal (PipeWire / Screenshot portal)
+# - "custom": Executes the custom command specified below
+method = "auto"
+
+# Custom shell command when method = "custom"
+# Use %s where the output temporary PNG path will be passed.
+# Examples:
+#   command = "grim -t png %s"
+#   command = "wayshot -f %s"
+#   command = "hyprshot -m output -f %s"
+#   command = "spectacle -b -n -o %s"
+command = ""
+
+# Timeout in seconds for custom capture command execution
+timeout_seconds = 5
+
+[shortcuts]
+# Key to cycle through modes in order: "Tab" (or any key name like "grave", "space")
+# Tip: Shift + Tab will cycle in reverse!
+cycle_mode_key = "Tab"
+
+# Direct number keys to switch modes
+mode_bounds_key = "1"
+mode_spacing_key = "2"
+mode_horizontal_key = "3"
+mode_vertical_key = "4"
+
+# Alternative mnemonic letter keys to switch modes
+alt_mode_bounds_key = "b"
+alt_mode_spacing_key = "s"
+alt_mode_horizontal_key = "h"
+alt_mode_vertical_key = "v"
+
+# Allow Shift + Mouse Scroll to cycle through modes during runtime
+shift_scroll_cycles_mode = true
+
+# Allow Ctrl + Mouse Scroll to cycle through modes during runtime
+ctrl_scroll_cycles_mode = true
 
 [ruler]
 # Initial tolerance percentage for edge detection (1 to 100)
@@ -251,6 +295,8 @@ cargo test
 ```
 
 The test suite covers:
+- Mode cycling logic (`next` / `prev`)
+- Keyboard shortcut matching (Tab, Shift+Tab, single chars, named keys)
 - Synthetic box and edge boundary detection
 - Gradient tolerance thresholds
 - Bounds rectangle geometry and reverse drag normalization

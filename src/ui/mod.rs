@@ -20,10 +20,12 @@ struct AppState {
     tolerance: u8,
     cursor: (f64, f64),
     shift_held: bool,
+    ctrl_held: bool,
     drag_start: Option<(f64, f64)>,
     pinned_rects: Vec<Rect>,
     measurement: EdgeMeasurement,
     tolerance_hud_until: Option<Instant>,
+    mode_hud_until: Option<Instant>,
 }
 
 pub fn create_and_show_overlay(
@@ -50,10 +52,12 @@ pub fn create_and_show_overlay(
         tolerance: initial_tolerance,
         cursor: (0.0, 0.0),
         shift_held: false,
+        ctrl_held: false,
         drag_start: None,
         pinned_rects: Vec::new(),
         measurement: EdgeMeasurement::empty(0, 0),
         tolerance_hud_until: None,
+        mode_hud_until: None,
     }));
 
     let layer_shell_supported = gtk4_layer_shell::is_supported();
@@ -161,6 +165,14 @@ fn build_overlay_window(
                 height as f64,
             );
 
+            let mode_hud_val = st.mode_hud_until.and_then(|until| {
+                if Instant::now() < until {
+                    Some(st.mode)
+                } else {
+                    None
+                }
+            });
+
             if st.mode == RulerMode::Bounds {
                 let active = st.drag_start.map(|start| {
                     Rect::from_points(start.0, start.1, st.cursor.0, st.cursor.1)
@@ -171,9 +183,10 @@ fn build_overlay_window(
                     st.cursor,
                     scale,
                     st.shift_held,
+                    mode_hud_val,
                 );
             } else {
-                let hud_val = st.tolerance_hud_until.and_then(|until| {
+                let tol_hud_val = st.tolerance_hud_until.and_then(|until| {
                     if Instant::now() < until {
                         Some(st.tolerance)
                     } else {
@@ -186,7 +199,8 @@ fn build_overlay_window(
                     monitor_x,
                     monitor_y,
                     scale,
-                    hud_val,
+                    tol_hud_val,
+                    mode_hud_val,
                 );
             }
         });
@@ -301,7 +315,7 @@ fn build_overlay_window(
         window.add_controller(click);
     }
 
-    // Mouse Scroll Wheel Controller (Dynamic tolerance adjustment)
+    // Mouse Scroll Wheel Controller (Tolerance adjustment & Mode switching)
     {
         let state = state.clone();
         let detector = detector.clone();
@@ -313,10 +327,42 @@ fn build_overlay_window(
         scroll.connect_scroll(move |_, _, dy| {
             let mut st = state.borrow_mut();
 
+            // Check if Shift+Scroll or Ctrl+Scroll should cycle modes
+            let cycle_mode = (st.shift_held && config.shortcuts.shift_scroll_cycles_mode)
+                || (st.ctrl_held && config.shortcuts.ctrl_scroll_cycles_mode);
+
+            if cycle_mode {
+                let new_mode = if dy < 0.0 {
+                    st.mode.prev()
+                } else if dy > 0.0 {
+                    st.mode.next()
+                } else {
+                    st.mode
+                };
+
+                if new_mode != st.mode {
+                    st.mode = new_mode;
+                    st.mode_hud_until = Some(Instant::now() + Duration::from_millis(1500));
+                    st.tolerance_hud_until = None;
+
+                    if st.mode != RulerMode::Bounds {
+                        st.drag_start = None;
+                        let scale = win.scale_factor() as f64;
+                        let abs_x = ((monitor_x + st.cursor.0) * scale).round() as u32;
+                        let abs_y = ((monitor_y + st.cursor.1) * scale).round() as u32;
+                        st.measurement = detector.detect_edges(abs_x, abs_y, st.tolerance);
+                    }
+
+                    da.queue_draw();
+                }
+
+                return glib::Propagation::Stop;
+            }
+
+            // Normal scroll: adjust tolerance when in Spacing / Horizontal / Vertical modes
             if st.mode != RulerMode::Bounds {
                 let step = config.ruler.tolerance_step as i32;
                 let current = st.tolerance as i32;
-                // Scroll up (dy < 0) increases tolerance; scroll down (dy > 0) decreases tolerance
                 let new_tol = if dy < 0.0 {
                     (current + step).min(100)
                 } else if dy > 0.0 {
@@ -327,6 +373,7 @@ fn build_overlay_window(
 
                 st.tolerance = new_tol;
                 st.tolerance_hud_until = Some(Instant::now() + Duration::from_millis(1500));
+                st.mode_hud_until = None;
 
                 let scale = win.scale_factor() as f64;
                 let abs_x = ((monitor_x + st.cursor.0) * scale).round() as u32;
@@ -342,17 +389,22 @@ fn build_overlay_window(
         window.add_controller(scroll);
     }
 
-    // Keyboard Controller (Esc, Shift, etc.)
+    // Keyboard Controller (Esc, Shift, Ctrl, and Mode Switch Shortcuts)
     {
         let state = state.clone();
+        let detector = detector.clone();
+        let config = config.clone();
         let da = drawing_area.clone();
         let app = app.clone();
+        let win = window.clone();
         let key = gtk4::EventControllerKey::new();
 
         key.connect_key_pressed({
             let state = state.clone();
+            let detector = detector.clone();
             let da = da.clone();
             let app = app.clone();
+            let win = win.clone();
             move |_, keyval, _, _| {
                 match keyval {
                     gdk::Key::Escape | gdk::Key::q | gdk::Key::Q => {
@@ -365,7 +417,64 @@ fn build_overlay_window(
                         da.queue_draw();
                         glib::Propagation::Proceed
                     }
-                    _ => glib::Propagation::Proceed,
+                    gdk::Key::Control_L | gdk::Key::Control_R => {
+                        let mut st = state.borrow_mut();
+                        st.ctrl_held = true;
+                        glib::Propagation::Proceed
+                    }
+                    _ => {
+                        // Check mode switching shortcuts
+                        let mut target_mode = None;
+
+                        if matches_key(&keyval, &config.shortcuts.cycle_mode_key) {
+                            let st = state.borrow();
+                            target_mode = Some(if st.shift_held {
+                                st.mode.prev()
+                            } else {
+                                st.mode.next()
+                            });
+                        } else if matches_key(&keyval, &config.shortcuts.mode_bounds_key)
+                            || matches_key(&keyval, &config.shortcuts.alt_mode_bounds_key)
+                        {
+                            target_mode = Some(RulerMode::Bounds);
+                        } else if matches_key(&keyval, &config.shortcuts.mode_spacing_key)
+                            || matches_key(&keyval, &config.shortcuts.alt_mode_spacing_key)
+                        {
+                            target_mode = Some(RulerMode::Spacing);
+                        } else if matches_key(&keyval, &config.shortcuts.mode_horizontal_key)
+                            || matches_key(&keyval, &config.shortcuts.alt_mode_horizontal_key)
+                        {
+                            target_mode = Some(RulerMode::Horizontal);
+                        } else if matches_key(&keyval, &config.shortcuts.mode_vertical_key)
+                            || matches_key(&keyval, &config.shortcuts.alt_mode_vertical_key)
+                        {
+                            target_mode = Some(RulerMode::Vertical);
+                        }
+
+                        if let Some(new_mode) = target_mode {
+                            let mut st = state.borrow_mut();
+                            if st.mode != new_mode {
+                                st.mode = new_mode;
+                                st.mode_hud_until =
+                                    Some(Instant::now() + Duration::from_millis(1500));
+                                st.tolerance_hud_until = None;
+
+                                if st.mode != RulerMode::Bounds {
+                                    st.drag_start = None;
+                                    let scale = win.scale_factor() as f64;
+                                    let abs_x = ((monitor_x + st.cursor.0) * scale).round() as u32;
+                                    let abs_y = ((monitor_y + st.cursor.1) * scale).round() as u32;
+                                    st.measurement =
+                                        detector.detect_edges(abs_x, abs_y, st.tolerance);
+                                }
+
+                                da.queue_draw();
+                            }
+                            glib::Propagation::Stop
+                        } else {
+                            glib::Propagation::Proceed
+                        }
+                    }
                 }
             }
         });
@@ -380,6 +489,10 @@ fn build_overlay_window(
                         st.shift_held = false;
                         da.queue_draw();
                     }
+                    gdk::Key::Control_L | gdk::Key::Control_R => {
+                        let mut st = state.borrow_mut();
+                        st.ctrl_held = false;
+                    }
                     _ => {}
                 }
             }
@@ -390,4 +503,38 @@ fn build_overlay_window(
 
     window.set_child(Some(&drawing_area));
     window.present();
+}
+
+/// Helper function to match a pressed key against a configured shortcut string
+pub fn matches_key(keyval: &gdk::Key, configured: &str) -> bool {
+    let cfg = configured.trim();
+    if cfg.is_empty() {
+        return false;
+    }
+
+    // Special check for Tab / Shift+Tab
+    if cfg.eq_ignore_ascii_case("tab")
+        && (*keyval == gdk::Key::Tab || *keyval == gdk::Key::ISO_Left_Tab)
+    {
+        return true;
+    }
+
+    // Check by GDK key name (e.g. "Tab", "Escape", "space", "F1")
+    if let Some(target) = gdk::Key::from_name(cfg) {
+        if *keyval == target {
+            return true;
+        }
+    }
+
+    // Check single character case-insensitively
+    if let Some(ch) = keyval.to_unicode() {
+        if cfg.chars().count() == 1 {
+            let target_ch = cfg.chars().next().unwrap();
+            if ch.eq_ignore_ascii_case(&target_ch) {
+                return true;
+            }
+        }
+    }
+
+    false
 }

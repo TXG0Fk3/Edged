@@ -38,19 +38,37 @@ impl From<std::io::Error> for CaptureError {
 
 /// Executes screen capture according to the configured capture method
 pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
-    match config.general.capture_method {
+    // Determine configured method (priority to [capture] section, fallback to [general])
+    let method = if config.capture.method != CaptureMethod::Auto {
+        config.capture.method
+    } else {
+        config.general.capture_method
+    };
+
+    let custom_cmd = if !config.capture.command.is_empty() {
+        &config.capture.command
+    } else {
+        &config.general.custom_capture_command
+    };
+
+    match method {
         CaptureMethod::Grim => capture_via_grim(),
         CaptureMethod::Portal => capture_via_portal(),
-        CaptureMethod::Command => {
-            if config.general.custom_capture_command.is_empty() {
+        CaptureMethod::Command | CaptureMethod::Custom => {
+            if custom_cmd.is_empty() {
                 Err(CaptureError::CommandFailed(
-                    "custom_capture_command is empty".to_string(),
+                    "Custom capture command is empty. Configure 'command' in [capture] section.".to_string(),
                 ))
             } else {
-                capture_via_custom_command(&config.general.custom_capture_command)
+                capture_via_custom_command(custom_cmd)
             }
         }
         CaptureMethod::Auto => {
+            // If custom command is set, prioritize it
+            if !custom_cmd.is_empty() {
+                return capture_via_custom_command(custom_cmd);
+            }
+
             // Try 'grim' first (instant on wlroots/Hyprland/Sway)
             match capture_via_grim() {
                 Ok(img) => Ok(img),
@@ -59,14 +77,9 @@ pub fn capture_screen(config: &Config) -> Result<RgbaImage, CaptureError> {
                     match capture_via_portal() {
                         Ok(img) => Ok(img),
                         Err(portal_err) => {
-                            // If a custom command is configured, try it as a last resort
-                            if !config.general.custom_capture_command.is_empty() {
-                                capture_via_custom_command(&config.general.custom_capture_command)
-                            } else {
-                                eprintln!("[edged] Grim: {}", grim_err);
-                                eprintln!("[edged] Portal: {}", portal_err);
-                                Err(CaptureError::AllMethodsFailed)
-                            }
+                            eprintln!("[edged] Grim: {}", grim_err);
+                            eprintln!("[edged] Portal: {}", portal_err);
+                            Err(CaptureError::AllMethodsFailed)
                         }
                     }
                 }

@@ -11,6 +11,38 @@ pub enum RulerMode {
     Vertical,
 }
 
+impl RulerMode {
+    /// Cycles to the next mode in order: Spacing -> Bounds -> Horizontal -> Vertical -> Spacing
+    pub fn next(&self) -> Self {
+        match self {
+            RulerMode::Spacing => RulerMode::Bounds,
+            RulerMode::Bounds => RulerMode::Horizontal,
+            RulerMode::Horizontal => RulerMode::Vertical,
+            RulerMode::Vertical => RulerMode::Spacing,
+        }
+    }
+
+    /// Cycles to the previous mode
+    pub fn prev(&self) -> Self {
+        match self {
+            RulerMode::Spacing => RulerMode::Vertical,
+            RulerMode::Vertical => RulerMode::Horizontal,
+            RulerMode::Horizontal => RulerMode::Bounds,
+            RulerMode::Bounds => RulerMode::Spacing,
+        }
+    }
+
+    /// User-friendly display name
+    pub fn name(&self) -> &'static str {
+        match self {
+            RulerMode::Bounds => "Bounds (Rectangle)",
+            RulerMode::Spacing => "Spacing (Cross)",
+            RulerMode::Horizontal => "Horizontal",
+            RulerMode::Vertical => "Vertical",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EdgeMeasurement {
     pub cursor_x: u32,
